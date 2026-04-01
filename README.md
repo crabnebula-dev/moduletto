@@ -15,8 +15,6 @@ Full Kyber-512 KEM session on Apple Silicon (M5 Pro):
 
 moduletto is **faster than the Kyber C Reference** and within 2.04x of LibOQS. The remaining gap is primarily hashing overhead (~29 us/session for ~39 Keccak calls). Polynomial arithmetic alone is within 1.26x of LibOQS.
 
-See [MODULETTO_SMART_CRITERION_COMPARISON.md](../MODULETTO_SMART_CRITERION_COMPARISON.md) for full benchmark methodology and breakdowns.
-
 ## What's Inside
 
 ### Core (`src/`)
