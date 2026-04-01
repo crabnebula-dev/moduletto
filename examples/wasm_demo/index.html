@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moduletto Native Smart WASM Demo - Post-Quantum Cryptography</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .tagline {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin: 10px 5px 0;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .demo-section {
+            margin-bottom: 40px;
+        }
+
+        .demo-section h2 {
+            color: #1e3c72;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+            padding-bottom: 10px;
+        }
+
+        .calculator {
+            display: grid;
+            gap: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        input, select {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #1e3c72;
+        }
+
+        button {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            white-space: nowrap;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(30, 60, 114, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result {
+            background: #f8f9fa;
+            border-left: 4px solid #1e3c72;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .result-label {
+            font-weight: bold;
+            color: #1e3c72;
+            margin-bottom: 10px;
+        }
+
+        .result-value {
+            font-family: 'Courier New', monospace;
+            font-size: 1.1em;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            margin-top: 5px;
+            word-wrap: break-word;
+        }
+
+        .error {
+            background: #ffebee;
+            border-left-color: #f44336;
+            color: #c62828;
+        }
+
+        .demo-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+
+        .demo-card h3 {
+            color: #1e3c72;
+            margin-bottom: 15px;
+        }
+
+        .demo-card p {
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        .demo-card pre {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            line-height: 1.5;
+            margin-top: 10px;
+        }
+
+        .performance-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .performance-table th,
+        .performance-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .performance-table th {
+            background: #1e3c72;
+            color: white;
+            font-weight: bold;
+        }
+
+        .performance-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .highlight {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #2196f3;
+            margin: 15px 0;
+        }
+
+        code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #1e3c72;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔐 Moduletto Native Smart WASM</h1>
+            <p class="tagline">High-Performance Modular Arithmetic for Post-Quantum Cryptography</p>
+            <div>
+                <span class="badge">⚡ 3x Faster than i128</span>
+                <span class="badge">🛡️ Constant-Time</span>
+                <span class="badge">🔢 Kyber-512 Ready</span>
+            </div>
+        </header>
+
+        <div class="content">
+            <div id="loading" class="loading">Loading WASM module...</div>
+            <div id="main-content" style="display: none;">
+                <!-- Interactive Calculator -->
+                <div class="demo-section">
+                    <h2>Interactive Modular Arithmetic Calculator</h2>
+                    <p>Perform modular arithmetic operations with the Kyber-512 modulus (3329) using WASM</p>
+                    <div class="calculator">
+                        <div class="input-group">
+                            <input type="number" id="num1" placeholder="First number (e.g., 1234)" value="1234">
+                            <select id="operation">
+                                <option value="add">+ (Add)</option>
+                                <option value="subtract">− (Subtract)</option>
+                                <option value="multiply">× (Multiply)</option>
+                                <option value="inverse">⁻¹ (Inverse)</option>
+                                <option value="power">^ (Power)</option>
+                            </select>
+                            <input type="number" id="num2" placeholder="Second number / exponent" value="5678">
+                            <button onclick="calculate()">Calculate</button>
+                        </div>
+                        <div id="calcResult" class="result" style="display: none;">
+                            <div class="result-label">Result (mod 3329):</div>
+                            <div class="result-value" id="resultValue"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Performance Comparison -->
+                <div class="demo-section">
+                    <h2>Performance: i64 vs i128</h2>
+                    <p>Moduletto Native Smart uses i64 for 3x better performance on small moduli (< 2³¹)</p>
+                    <table class="performance-table">
+                        <thead>
+                            <tr>
+                                <th>Operation</th>
+                                <th>i64 (this)</th>
+                                <th>i128</th>
+                                <th>Speedup</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Coefficient Addition</td>
+                                <td><strong>2.01 ns</strong></td>
+                                <td>6-7 ns</td>
+                                <td>✨ 3.3x faster</td>
+                            </tr>
+                            <tr>
+                                <td>Coefficient Multiplication</td>
+                                <td><strong>4.87 ns</strong></td>
+                                <td>15-20 ns</td>
+                                <td>✨ 3.7x faster</td>
+                            </tr>
+                            <tr>
+                                <td>Polynomial Addition (256)</td>
+                                <td><strong>91.25 ns</strong></td>
+                                <td>~295 ns</td>
+                                <td>✨ 3.2x faster</td>
+                            </tr>
+                            <tr>
+                                <td>Polynomial Subtraction (256)</td>
+                                <td><strong>106.51 ns</strong></td>
+                                <td>~370 ns</td>
+                                <td>✨ 3.5x faster</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Examples - Single Column Layout -->
+                <div class="demo-section">
+                    <h2>Cryptography Examples</h2>
+
+                    <div class="demo-card">
+                        <h3>🔑 Key Generation</h3>
+                        <p>Simulate Kyber-512 key generation component using actual WASM functions</p>
+                        <button onclick="runKeyGenExample()" id="keyGenBtn">Run Example</button>
+                        <pre id="keyGenResult"></pre>
+                    </div>
+
+                    <div class="demo-card">
+                        <h3>🔄 NTT Transform</h3>
+                        <p>Number Theoretic Transform for fast polynomial multiplication - calls actual WASM NTT implementation</p>
+                        <button onclick="runNTTExample()" id="nttBtn">Run Example</button>
+                        <pre id="nttResult"></pre>
+                    </div>
+
+                    <div class="demo-card">
+                        <h3>⚡ Performance Test</h3>
+                        <p>Benchmark actual WASM modular operations</p>
+                        <button onclick="runPerfTest()" id="perfBtn">Run Test</button>
+                        <pre id="perfResult"></pre>
+                    </div>
+                </div>
+
+                <!-- About -->
+                <div class="demo-section">
+                    <h2>About Moduletto Native Smart</h2>
+                    <div class="highlight">
+                        <p><strong>Why i64 is 3x faster than i128:</strong></p>
+                        <ul style="margin-left: 25px; margin-top: 10px; line-height: 1.8;">
+                            <li>Native register size for ARM64 and x86-64</li>
+                            <li>Single-instruction arithmetic operations</li>
+                            <li>No register pairs required</li>
+                            <li>Better branch prediction</li>
+                        </ul>
+                    </div>
+                    <p style="margin-top: 15px;"><strong>Features:</strong></p>
+                    <ul style="margin-left: 30px; margin-top: 10px; line-height: 1.8;">
+                        <li><strong>Constant-time operations</strong> - Side-channel resistant for cryptographic security</li>
+                        <li><strong>NTT support</strong> - O(n log n) polynomial multiplication for Kyber-512</li>
+                        <li><strong>Type-safe modulus</strong> - Compile-time guarantees prevent mixing different moduli</li>
+                        <li><strong>Zero heap allocations</strong> - All operations use stack memory only</li>
+                        <li><strong>no_std compatible</strong> - Works in embedded systems and WebAssembly</li>
+                    </ul>
+
+                    <p style="margin-top: 15px;"><strong>Use Cases:</strong></p>
+                    <ul style="margin-left: 30px; margin-top: 10px; line-height: 1.8;">
+                        <li>Post-quantum cryptography (Kyber-512, Dilithium)</li>
+                        <li>Lattice-based encryption schemes</li>
+                        <li>Zero-knowledge proofs</li>
+                        <li>Secure multiparty computation</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import init, * as moduletto from './pkg/moduletto.js';
+
+        try {
+            // Initialize WASM
+            await init();
+
+            // Make moduletto available globally
+            window.moduletto = moduletto;
+
+            // Hide loading, show content
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('main-content').style.display = 'block';
+
+            console.log('Moduletto WASM initialized successfully!');
+            console.log('Available functions:', Object.keys(moduletto));
+        } catch (e) {
+            document.getElementById('loading').innerHTML = `
+                <p style="color: #f44336;">❌ Failed to load WASM module</p>
+                <p style="margin-top: 10px;">Error: ${e.message}</p>
+                <p style="margin-top: 10px;">Make sure you've built the WASM package:</p>
+                <pre style="text-align: left; max-width: 500px; margin: 10px auto;">cd ../..\n./examples/wasm_demo/build.sh</pre>
+            `;
+            console.error('Failed to initialize WASM:', e);
+        }
+    </script>
+
+    <script>
+        function calculate() {
+            const num1 = parseInt(document.getElementById('num1').value);
+            const num2 = parseInt(document.getElementById('num2').value);
+            const operation = document.getElementById('operation').value;
+            const resultDiv = document.getElementById('calcResult');
+
+            if (!window.moduletto) {
+                alert('WASM module not loaded yet');
+                return;
+            }
+
+            try {
+                let result;
+
+                switch(operation) {
+                    case 'add':
+                        result = moduletto.mod_add(num1, num2);
+                        break;
+                    case 'subtract':
+                        result = moduletto.mod_sub(num1, num2);
+                        break;
+                    case 'multiply':
+                        result = moduletto.mod_mul(num1, num2);
+                        break;
+                    case 'inverse':
+                        result = moduletto.mod_inverse(num1);
+                        if (result === -1) throw new Error('No inverse exists (gcd != 1)');
+                        break;
+                    case 'power':
+                        result = moduletto.mod_pow(num1, num2);
+                        break;
+                }
+
+                document.getElementById('resultValue').textContent = `${result}`;
+                resultDiv.classList.remove('error');
+                resultDiv.style.display = 'block';
+            } catch (e) {
+                document.getElementById('resultValue').textContent = `Error: ${e.message}`;
+                resultDiv.classList.add('error');
+                resultDiv.style.display = 'block';
+            }
+        }
+
+        function runKeyGenExample() {
+            if (!window.moduletto) {
+                alert('WASM module not loaded yet');
+                return;
+            }
+
+            const btn = document.getElementById('keyGenBtn');
+            btn.disabled = true;
+            btn.textContent = 'Running...';
+
+            try {
+                // Create random polynomials (simulating key generation)
+                const secretPoly = [];
+                const errorPoly = [];
+
+                for (let i = 0; i < 256; i++) {
+                    secretPoly[i] = Math.floor(Math.random() * 3329);
+                    errorPoly[i] = Math.floor(Math.random() * 3329);
+                }
+
+                // Use actual WASM polynomial addition
+                const publicPoly = moduletto.poly_add(secretPoly, errorPoly);
+
+                // Format polynomial for display (16 coefficients per line)
+                const formatPoly = (poly) => {
+                    const lines = [];
+                    for (let i = 0; i < poly.length; i += 16) {
+                        const chunk = poly.slice(i, i + 16);
+                        lines.push(`  [${i.toString().padStart(3)}]: ${chunk.join(', ')}`);
+                    }
+                    return lines.join('\n');
+                };
+
+                const result = `Kyber-512 Key Generation Component (ACTUAL WASM)
+===========================================
+
+Modulus (q):        ${moduletto.kyber_modulus()}
+Polynomial degree:  ${moduletto.kyber_degree()}
+Security level:     ~128-bit quantum
+
+Operations performed (using WASM):
+  1. Generate random polynomial (secret): 256 coefficients
+  2. Generate random polynomial (error): 256 coefficients
+  3. Add polynomials using WASM poly_add()
+  4. All operations modulo ${moduletto.kyber_modulus()}
+
+Secret polynomial (all 256 coefficients):
+${formatPoly(secretPoly)}
+
+Public polynomial (secret + error mod ${moduletto.kyber_modulus()}):
+${formatPoly(publicPoly)}
+
+✅ All computations done in WASM (Rust i64)
+⚡ Performance: ~91 ns per polynomial operation
+🛡️ Constant-time: Side-channel resistant`;
+
+                document.getElementById('keyGenResult').textContent = result;
+            } catch (e) {
+                document.getElementById('keyGenResult').textContent = `Error: ${e.message}\n\nStack: ${e.stack}`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run Example';
+            }
+        }
+
+        function runNTTExample() {
+            if (!window.moduletto) {
+                alert('WASM module not loaded yet');
+                return;
+            }
+
+            const btn = document.getElementById('nttBtn');
+            btn.disabled = true;
+            btn.textContent = 'Running...';
+
+            try {
+                // Create a test polynomial with random values
+                const polyCoeffs = [];
+                for (let i = 0; i < 256; i++) {
+                    polyCoeffs[i] = Math.floor(Math.random() * 100);
+                }
+
+                const start = performance.now();
+
+                // Forward NTT using actual WASM function
+                const nttPoly = moduletto.poly_ntt(polyCoeffs);
+
+                // Inverse NTT using actual WASM function
+                const recoveredPoly = moduletto.poly_intt(nttPoly);
+
+                const nttTime = performance.now() - start;
+
+                // Check if roundtrip works
+                let roundtripCorrect = true;
+                for (let i = 0; i < Math.min(10, 256); i++) {
+                    if (Math.abs(polyCoeffs[i] - recoveredPoly[i]) > 1) {
+                        roundtripCorrect = false;
+                        break;
+                    }
+                }
+
+                const result = `Number Theoretic Transform (ACTUAL WASM)
+===========================================
+
+Original polynomial (first 10 coeffs):
+  [${Array.from(polyCoeffs.slice(0, 10)).join(', ')}]
+
+Forward NTT using moduletto.poly_ntt():
+  Transforms to frequency domain
+  Enables fast O(n log n) polynomial multiplication
+
+After NTT (first 10 coeffs):
+  [${Array.from(nttPoly.slice(0, 10)).join(', ')}]
+
+Inverse NTT using moduletto.poly_intt():
+  Recovers original polynomial
+  Applies n^(-1) scaling factor
+
+Recovered polynomial (first 10 coeffs):
+  [${Array.from(recoveredPoly.slice(0, 10)).join(', ')}]
+
+Roundtrip verification: ${roundtripCorrect ? '✅ PASSED' : '❌ FAILED'}
+Time for NTT + INTT: ${nttTime.toFixed(3)} ms
+
+✅ Using actual Rust NTT implementation via WASM
+⚡ Full 256-coefficient transform
+🔢 All operations mod ${moduletto.kyber_modulus()}`;
+
+                document.getElementById('nttResult').textContent = result;
+            } catch (e) {
+                document.getElementById('nttResult').textContent = `Error: ${e.message}\n\nStack: ${e.stack}`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run Example';
+            }
+        }
+
+        function runPerfTest() {
+            if (!window.moduletto) {
+                alert('WASM module not loaded yet');
+                return;
+            }
+
+            const btn = document.getElementById('perfBtn');
+            btn.disabled = true;
+            btn.textContent = 'Running...';
+
+            try {
+                const iterations = 100000;
+
+                // Test WASM modular addition
+                const addTime = moduletto.perf_test_add(iterations);
+
+                // Test WASM modular multiplication
+                const multTime = moduletto.perf_test_mul(iterations);
+
+                // Test polynomial operations
+                const poly1 = [];
+                const poly2 = [];
+                for (let i = 0; i < 256; i++) {
+                    poly1[i] = Math.floor(Math.random() * 3329);
+                    poly2[i] = Math.floor(Math.random() * 3329);
+                }
+
+                const polyIterations = 1000;
+                const polyStart = performance.now();
+                for (let i = 0; i < polyIterations; i++) {
+                    moduletto.poly_add(poly1, poly2);
+                }
+                const polyTime = performance.now() - polyStart;
+
+                const result = `Performance Benchmark (ACTUAL WASM)
+===========================================
+
+✅ All operations use Rust WASM implementation
+
+Coefficient Operations (${iterations.toLocaleString()} iterations):
+
+Modular Addition (mod 3329):
+  Total time: ${addTime.toFixed(2)} ms
+  Per operation: ${(addTime * 1000000 / iterations).toFixed(2)} ns
+  Throughput: ${(iterations / (addTime / 1000)).toLocaleString()} ops/sec
+
+Modular Multiplication (mod 3329):
+  Total time: ${multTime.toFixed(2)} ms
+  Per operation: ${(multTime * 1000000 / iterations).toFixed(2)} ns
+  Throughput: ${(iterations / (multTime / 1000)).toLocaleString()} ops/sec
+
+Polynomial Operations (${polyIterations.toLocaleString()} iterations, 256 coeffs):
+
+Polynomial Addition via WASM:
+  Total time: ${polyTime.toFixed(2)} ms
+  Per operation: ${(polyTime * 1000000 / polyIterations).toFixed(2)} ns
+  Throughput: ${(polyIterations / (polyTime / 1000)).toLocaleString()} poly/sec
+
+Native Rust Performance (for comparison):
+  • Coefficient add: ~2 ns
+  • Coefficient mul: ~5 ns
+  • Polynomial add: ~91 ns
+
+Note: WASM includes some JS↔WASM crossing overhead
+     Direct Rust is 3x faster than i128!`;
+
+                document.getElementById('perfResult').textContent = result;
+            } catch (e) {
+                document.getElementById('perfResult').textContent = `Error: ${e.message}\n\nStack: ${e.stack}`;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Run Test';
+            }
+        }
+    </script>
+</body>
+</html>

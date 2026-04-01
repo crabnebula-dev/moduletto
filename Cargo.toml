@@ -1,0 +1,75 @@
+[package]
+name = "moduletto"
+version = "0.1.0"
+edition = "2021"
+authors = ["Daniel Thompson-Yvetot"]
+license = "Polyform-Noncommercial-1.0.0"
+description = "Optimized modular arithmetic and NTT for lattice cryptography — i64 scalar, i16 NEON, and Kyber KEM"
+keywords = ["modular", "ntt", "kyber", "cryptography", "performance"]
+categories = ["mathematics", "no-std", "cryptography", "embedded"]
+repository = "https://github.com/denjell/circlecimal"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Optional WebAssembly support
+wasm-bindgen = { version = "0.2", optional = true }
+web-sys = { version = "0.3", features = ["Window", "Performance"], optional = true }
+
+# Math functions for no_std environments
+libm = { version = "0.2", optional = true }
+
+[dev-dependencies]
+criterion = "0.7"
+sha3 = { version = "0.10", features = ["asm"] }
+
+[features]
+default = ["std"]
+std = ["alloc"]
+alloc = ["libm"]
+wasm = ["wasm-bindgen", "web-sys"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[[example]]
+name = "kyber_benchmark"
+path = "examples/kyber_benchmark.rs"
+required-features = ["std"]
+
+[[example]]
+name = "no_std_embedded"
+path = "examples/no_std_embedded.rs"
+
+[[example]]
+name = "bench_no_std"
+path = "examples/bench_no_std.rs"
+
+[[example]]
+name = "wasm_usage"
+path = "examples/wasm_usage.rs"
+required-features = ["std"]
+
+[[example]]
+name = "bench_wasm"
+path = "examples/bench_wasm.rs"
+
+[[bench]]
+name = "moduletto_bench"
+harness = false
+
+# Enable all features for docs.rs
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+# WASM build configuration - optimize for size
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Oz", "--enable-bulk-memory", "--enable-nontrapping-float-to-int", "--enable-sign-ext", "--enable-mutable-globals"]
