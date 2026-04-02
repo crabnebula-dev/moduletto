@@ -51,11 +51,12 @@ pub trait ConstantTimeOps<const N: i64>: Sized {
     fn ct_neg(self) -> Self;
 
     /// Constant-time conditional selection
-    /// Returns `a` if `choice == 0`, otherwise returns `b`
+    /// Returns `a` if bit 0 of `choice` is 0, returns `b` if bit 0 is 1.
+    /// Only bit 0 is examined; upper bits are ignored.
     fn ct_select(a: Self, b: Self, choice: u8) -> Self;
 
     /// Constant-time conditional swap
-    /// Swaps `a` and `b` if `choice != 0`
+    /// Swaps `a` and `b` if bit 0 of `choice` is 1. Upper bits are ignored.
     fn ct_swap(a: &mut Self, b: &mut Self, choice: u8);
 
     /// Constant-time equality check
@@ -64,6 +65,17 @@ pub trait ConstantTimeOps<const N: i64>: Sized {
 
     /// Constant-time comparison: returns 1 if self < other, 0 otherwise
     fn ct_lt(self, other: Self) -> u8;
+}
+
+/// Opaque mask barrier: prevents the compiler from observing that `mask` is
+/// always 0 or -1, which could let it reintroduce branches.
+///
+/// Uses `core::hint::black_box` to hide the value from the optimiser.
+/// This is weaker than inline asm (which `subtle` uses) but is the best
+/// tool available in stable Rust without an asm dependency.
+#[inline(always)]
+fn ct_mask(mask: i64) -> i64 {
+    core::hint::black_box(mask)
 }
 
 impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
@@ -86,7 +98,7 @@ impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
 
         // Compute reduction mask without branching
         // If sum >= N, this will be all 1s (-1), otherwise all 0s (0)
-        let needs_reduction = ((N - 1 - sum) >> 63) as i64;
+        let needs_reduction = ct_mask(((N - 1 - sum) >> 63) as i64);
 
         let reduced = sum - N;
 
@@ -106,7 +118,7 @@ impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
         let diff = self.value() - other.value();
 
         // Compute underflow mask: -1 if diff < 0, 0 otherwise
-        let needs_adjustment = (diff >> 63) as i64;
+        let needs_adjustment = ct_mask((diff >> 63) as i64);
 
         let adjusted = diff + N;
 
@@ -133,7 +145,7 @@ impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
         let negated = N - self.value();
 
         // Branchless selection
-        let mask = -(is_zero as i64);
+        let mask = ct_mask(-(is_zero as i64));
         let result = (self.value() & mask) | (negated & !mask);
 
         unsafe { Self::new_unchecked(result) }
@@ -141,19 +153,19 @@ impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
 
     /// Constant-time conditional selection
     ///
-    /// Returns `a` if `choice == 0`, otherwise returns `b`.
+    /// Returns `a` if bit 0 of `choice` is 0, returns `b` if bit 0 is 1.
     /// This operation takes constant time regardless of the choice value.
     fn ct_select(a: Self, b: Self, choice: u8) -> Self {
-        let mask = -((choice & 1) as i64);
+        let mask = ct_mask(-((choice & 1) as i64));
         let result = (a.value() & !mask) | (b.value() & mask);
         unsafe { Self::new_unchecked(result) }
     }
 
     /// Constant-time conditional swap
     ///
-    /// Swaps `a` and `b` if `choice != 0`, using XOR-based swap trick.
+    /// Swaps `a` and `b` if bit 0 of `choice` is 1, using XOR-based swap trick.
     fn ct_swap(a: &mut Self, b: &mut Self, choice: u8) {
-        let mask = -((choice & 1) as i64);
+        let mask = ct_mask(-((choice & 1) as i64));
         let xor = (a.value() ^ b.value()) & mask;
 
         let new_a = a.value() ^ xor;
@@ -177,7 +189,7 @@ impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
         let diff = self.value() - other.value();
 
         // If diff < 0, sign bit is 1
-        ((diff >> 63) & 1) as u8
+        ((core::hint::black_box(diff) >> 63) & 1) as u8
     }
 }
 
@@ -230,16 +242,14 @@ fn ct_reduce<const N: i64>(x: i64) -> ModN<N> {
     };
 
     // Compute μ = ⌊2^(2k) / N⌋
-    // This is a precomputation that would ideally be const, but we compute it here
-    // In production, this should be precomputed at compile time
-    let two_k = (k * 2) as u32;
-    // Compute μ = ⌊2^(2k) / N⌋
     // For Kyber (k=12), this is (1 << 24) / 3329 = 5041
-    let mu = (1_i64 << two_k) / N;
+    let two_k = (k * 2) as u32;
+    let mu = (1_i128 << two_k) / (N as i128);
 
     // Barrett reduction
     // q ≈ x / N, computed as q = ⌊(x · μ) / 2^(2k)⌋
-    let q = ((x as i64) * mu) >> two_k;
+    // Use i128 to avoid overflow when N is large (up to 2^31)
+    let q = (((x as i128) * mu) >> two_k) as i64;
 
     // r = x - q · N
     let mut r = x - q * N;
@@ -250,9 +260,9 @@ fn ct_reduce<const N: i64>(x: i64) -> ModN<N> {
     // Constant-time conditional subtraction
     // Check if r >= N using: (r - N) has sign bit 0 if r >= N, 1 if r < N
     let diff = r - N;
-    let is_negative = (diff >> 63) & 1;
+    let is_negative = (core::hint::black_box(diff) >> 63) & 1;
     let needs_reduction = 1 - is_negative;
-    let mask = -(needs_reduction as i64);
+    let mask = ct_mask(-(needs_reduction as i64));
 
     // If needs_reduction, use diff (r - N); otherwise use r
     r = (diff & mask) | (r & !mask);

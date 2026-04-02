@@ -46,6 +46,7 @@ use core::ops::{Add, Sub, Mul, Neg};
 /// let sum = a + b;  // Compile error: type mismatch
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(transparent)]
 pub struct ModN<const N: i64> {
     value: i64,  // Always in canonical form [0, N)
 }
