@@ -119,6 +119,25 @@ For moduli < 2^31, i64 is 3x faster than i128 on 64-bit platforms. i64 maps to n
 
 Kyber's modulus q=3329 fits in 12 bits. Using i16 coefficients with ARM64 NEON intrinsics (`int16x8_t`) processes 8 coefficients per vector instruction. Montgomery multiplication (`fqmul`) uses `vmull_s16` -> `vmovn_s32` -> `vshrn_n_s32` to compute `a*b*R^{-1} mod q` entirely in NEON registers.
 
+## Formal Verification (`proofs/`)
+
+The constant-time arithmetic is formally verified using Coq (Rocq 9.1) with an accompanying OCaml test harness.
+
+```bash
+cd proofs && make
+```
+
+### Coq proofs
+
+- **`ModularArithmetic.v`** -- Correctness of branchless CT add/sub/neg (equivalence to branching versions, correctness mod N, range closure, algebraic properties)
+- **`BarrettReduction.v`** -- Barrett reduction produces `x mod N` for inputs < N^2, with quotient approximation bounds and Kyber-3329 instantiation
+- **`ConstantTime.v`** -- ct_select, ct_swap (XOR swap), ct_lt, ct_is_zero: functional correctness of all branchless primitives
+- **`NTT.v`** -- Kyber parameter verification: zeta=17 is a primitive 256th root of unity mod 3329, 128^(-1) = 3303 mod 3329, primality of 3329
+
+### OCaml test harness
+
+- **`test_moduletto.ml`** -- 27,000+ runtime tests validating VT/CT agreement, Barrett reduction, CT primitives, and NTT root-of-unity properties across sampled Kyber coefficient ranges
+
 ## License
 
 Polyform-Noncommercial-1.0.0

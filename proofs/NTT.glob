@@ -1,0 +1,262 @@
+DIGEST a1a4a21241c09780ee07be69d6b68fcf
+FModuletto.NTT
+R478:483 Stdlib.ZArith.ZArith <> <> lib
+R513:515 Stdlib.micromega.Lia <> <> lib
+R545:548 Stdlib.ZArith.Zdiv <> <> lib
+R578:581 Stdlib.Lists.List <> <> lib
+R591:603 Stdlib.Lists.List ListNotations <> mod
+def 667:673 <> kyber_q
+R677:677 Corelib.Numbers.BinNums <> Z ind
+def 699:705 <> kyber_n
+R709:709 Corelib.Numbers.BinNums <> Z ind
+def 730:739 <> kyber_zeta
+R743:743 Corelib.Numbers.BinNums <> Z ind
+def 796:802 <> mod_pow
+R824:824 Corelib.Numbers.BinNums <> Z ind
+binder 805:808 <> base:1
+binder 810:812 <> exp:2
+binder 814:820 <> modulus:3
+R835:837 Corelib.Init.Datatypes <> nat ind
+binder 828:831 <> fuel:4
+R842:842 Corelib.Numbers.BinNums <> Z ind
+R855:858 Moduletto.NTT <> fuel:4 var
+R869:869 Corelib.Init.Datatypes <> O constr
+R875:879 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R880:886 Moduletto.NTT <> modulus:3 var
+R892:892 Corelib.Init.Datatypes <> S constr
+R906:910 Stdlib.ZArith.BinInt Z eqb def
+R912:914 Moduletto.NTT <> exp:2 var
+R949:953 Stdlib.ZArith.BinInt Z eqb def
+R959:963 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R956:958 Moduletto.NTT <> exp:2 var
+R1070:1076 Moduletto.NTT <> mod_pow:5 def
+R1114:1120 Moduletto.NTT <> modulus:3 var
+R1108:1110 Stdlib.ZArith.BinInt <> ::Z_scope:x_'/'_x not
+R1105:1107 Moduletto.NTT <> exp:2 var
+R1090:1094 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R1083:1085 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R1079:1082 Moduletto.NTT <> base:1 var
+R1086:1089 Moduletto.NTT <> base:1 var
+R1095:1101 Moduletto.NTT <> modulus:3 var
+R980:980 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R1041:1046 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R985:987 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R981:984 Moduletto.NTT <> base:1 var
+R988:994 Moduletto.NTT <> mod_pow:5 def
+R1032:1038 Moduletto.NTT <> modulus:3 var
+R1026:1028 Stdlib.ZArith.BinInt <> ::Z_scope:x_'/'_x not
+R1023:1025 Moduletto.NTT <> exp:2 var
+R1008:1012 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R1001:1003 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R997:1000 Moduletto.NTT <> base:1 var
+R1004:1007 Moduletto.NTT <> base:1 var
+R1013:1019 Moduletto.NTT <> modulus:3 var
+R1047:1053 Moduletto.NTT <> modulus:3 var
+R924:928 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R929:935 Moduletto.NTT <> modulus:3 var
+prf 1227:1239 <> zeta_256_is_1
+R1278:1280 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1245:1251 Moduletto.NTT <> mod_pow def
+R1253:1262 Moduletto.NTT <> kyber_zeta def
+R1268:1274 Moduletto.NTT <> kyber_q def
+prf 1379:1394 <> zeta_128_is_neg1
+R1433:1435 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1400:1406 Moduletto.NTT <> mod_pow def
+R1408:1417 Moduletto.NTT <> kyber_zeta def
+R1423:1429 Moduletto.NTT <> kyber_q def
+R1443:1445 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1436:1442 Moduletto.NTT <> kyber_q def
+prf 1559:1568 <> zeta_neq_1
+R1596:1599 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R1584:1588 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R1574:1583 Moduletto.NTT <> kyber_zeta def
+R1589:1595 Moduletto.NTT <> kyber_q def
+prf 1699:1711 <> zeta_64_neq_1
+R1749:1752 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R1717:1723 Moduletto.NTT <> mod_pow def
+R1725:1734 Moduletto.NTT <> kyber_zeta def
+R1739:1745 Moduletto.NTT <> kyber_q def
+prf 1825:1837 <> zeta_32_neq_1
+R1875:1878 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R1843:1849 Moduletto.NTT <> mod_pow def
+R1851:1860 Moduletto.NTT <> kyber_zeta def
+R1865:1871 Moduletto.NTT <> kyber_q def
+prf 1984:1996 <> n_inv_correct
+R2026:2028 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2002:2002 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2013:2018 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2006:2008 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R2019:2025 Moduletto.NTT <> kyber_q def
+prf 2277:2293 <> kyber_q_not_div_2
+R2310:2313 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2304:2308 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2297:2303 Moduletto.NTT <> kyber_q def
+prf 2362:2378 <> kyber_q_not_div_3
+R2395:2398 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2389:2393 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2382:2388 Moduletto.NTT <> kyber_q def
+prf 2447:2463 <> kyber_q_not_div_5
+R2480:2483 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2474:2478 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2467:2473 Moduletto.NTT <> kyber_q def
+prf 2532:2548 <> kyber_q_not_div_7
+R2565:2568 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2559:2563 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2552:2558 Moduletto.NTT <> kyber_q def
+prf 2617:2634 <> kyber_q_not_div_11
+R2652:2655 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2645:2649 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2638:2644 Moduletto.NTT <> kyber_q def
+prf 2704:2721 <> kyber_q_not_div_13
+R2739:2742 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2732:2736 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2725:2731 Moduletto.NTT <> kyber_q def
+prf 2791:2808 <> kyber_q_not_div_17
+R2826:2829 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2819:2823 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2812:2818 Moduletto.NTT <> kyber_q def
+prf 2878:2895 <> kyber_q_not_div_19
+R2913:2916 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2906:2910 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2899:2905 Moduletto.NTT <> kyber_q def
+prf 2965:2982 <> kyber_q_not_div_23
+R3000:3003 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2993:2997 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2986:2992 Moduletto.NTT <> kyber_q def
+prf 3052:3069 <> kyber_q_not_div_29
+R3087:3090 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R3080:3084 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R3073:3079 Moduletto.NTT <> kyber_q def
+prf 3139:3156 <> kyber_q_not_div_31
+R3174:3177 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R3167:3171 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R3160:3166 Moduletto.NTT <> kyber_q def
+prf 3226:3243 <> kyber_q_not_div_37
+R3261:3264 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R3254:3258 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R3247:3253 Moduletto.NTT <> kyber_q def
+prf 3313:3330 <> kyber_q_not_div_41
+R3348:3351 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R3341:3345 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R3334:3340 Moduletto.NTT <> kyber_q def
+prf 3400:3417 <> kyber_q_not_div_43
+R3435:3438 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R3428:3432 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R3421:3427 Moduletto.NTT <> kyber_q def
+prf 3487:3504 <> kyber_q_not_div_47
+R3522:3525 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R3515:3519 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R3508:3514 Moduletto.NTT <> kyber_q def
+prf 3574:3591 <> kyber_q_not_div_53
+R3609:3612 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R3602:3606 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R3595:3601 Moduletto.NTT <> kyber_q def
+def 4029:4042 <> ntt_eval_point
+R4054:4057 Corelib.Init.Datatypes <> list ind
+R4059:4059 Corelib.Numbers.BinNums <> Z ind
+binder 4045:4050 <> coeffs:7
+R4067:4067 Corelib.Numbers.BinNums <> Z ind
+binder 4063:4063 <> k:8
+R4075:4075 Corelib.Numbers.BinNums <> Z ind
+binder 4071:4071 <> q:9
+R4086:4086 Corelib.Numbers.BinNums <> Z ind
+binder 4079:4082 <> zeta:10
+R4091:4091 Corelib.Numbers.BinNums <> Z ind
+R4098:4106 Stdlib.Lists.List <> fold_left def
+R4207:4213 Stdlib.Lists.List <> combine def
+R4254:4259 Moduletto.NTT <> coeffs:7 var
+R4216:4218 Corelib.Lists.ListDef <> map def
+R4230:4232 Corelib.Lists.ListDef <> seq def
+R4237:4242 Corelib.Init.Datatypes <> length def
+R4244:4249 Moduletto.NTT <> coeffs:7 var
+R4220:4227 Stdlib.ZArith.BinInt Z of_nat def
+binder 4113:4115 <> acc:11
+binder 4117:4120 <> pair:12
+R4145:4148 Moduletto.NTT <> pair:12 var
+R4134:4134 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R4136:4137 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R4140:4140 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R4157:4157 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R4194:4199 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R4161:4163 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4158:4160 Moduletto.NTT <> acc:11 var
+R4166:4168 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R4169:4175 Moduletto.NTT <> mod_pow def
+R4177:4180 Moduletto.NTT <> zeta:10 var
+R4184:4186 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R4187:4187 Moduletto.NTT <> k:8 var
+R4190:4190 Moduletto.NTT <> q:9 var
+R4200:4200 Moduletto.NTT <> q:9 var
+prf 4332:4349 <> ntt_additive_point
+R4369:4372 Corelib.Init.Datatypes <> list ind
+R4374:4374 Corelib.Numbers.BinNums <> Z ind
+binder 4363:4363 <> a:14
+binder 4365:4365 <> b:15
+binder 4377:4377 <> k:16
+binder 4379:4379 <> q:17
+binder 4381:4384 <> zeta:18
+R4396:4403 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4392:4394 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R4391:4391 Moduletto.NTT <> q:17 var
+R4423:4430 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4412:4414 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4404:4409 Corelib.Init.Datatypes <> length def
+R4411:4411 Moduletto.NTT <> a:14 var
+R4415:4420 Corelib.Init.Datatypes <> length def
+R4422:4422 Moduletto.NTT <> b:15 var
+R4509:4515 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4431:4444 Moduletto.NTT <> ntt_eval_point def
+R4447:4449 Corelib.Lists.ListDef <> map def
+R4487:4493 Stdlib.Lists.List <> combine def
+R4497:4497 Moduletto.NTT <> b:15 var
+R4495:4495 Moduletto.NTT <> a:14 var
+binder 4456:4456 <> p:19
+R4462:4462 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R4476:4481 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R4468:4470 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4463:4465 Corelib.Init.Datatypes <> fst def
+R4467:4467 Moduletto.NTT <> p:19 var
+R4471:4473 Corelib.Init.Datatypes <> snd def
+R4475:4475 Moduletto.NTT <> p:19 var
+R4482:4482 Moduletto.NTT <> q:17 var
+R4501:4501 Moduletto.NTT <> k:16 var
+R4503:4503 Moduletto.NTT <> q:17 var
+R4505:4508 Moduletto.NTT <> zeta:18 var
+R4516:4516 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R4570:4575 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R4542:4544 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4517:4530 Moduletto.NTT <> ntt_eval_point def
+R4532:4532 Moduletto.NTT <> a:14 var
+R4534:4534 Moduletto.NTT <> k:16 var
+R4536:4536 Moduletto.NTT <> q:17 var
+R4538:4541 Moduletto.NTT <> zeta:18 var
+R4545:4558 Moduletto.NTT <> ntt_eval_point def
+R4560:4560 Moduletto.NTT <> b:15 var
+R4562:4562 Moduletto.NTT <> k:16 var
+R4564:4564 Moduletto.NTT <> q:17 var
+R4566:4569 Moduletto.NTT <> zeta:18 var
+R4576:4576 Moduletto.NTT <> q:17 var
+prf 5158:5180 <> kyber_params_consistent
+R5197:5202 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R5193:5195 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R5186:5192 Moduletto.NTT <> kyber_q def
+R5214:5219 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R5210:5212 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R5203:5209 Moduletto.NTT <> kyber_n def
+R5248:5253 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R5244:5246 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5220:5220 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R5231:5236 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R5224:5226 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R5237:5243 Moduletto.NTT <> kyber_q def
+R5291:5296 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R5287:5289 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5254:5260 Moduletto.NTT <> mod_pow def
+R5262:5271 Moduletto.NTT <> kyber_zeta def
+R5277:5283 Moduletto.NTT <> kyber_q def
+R5330:5332 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5297:5303 Moduletto.NTT <> mod_pow def
+R5305:5314 Moduletto.NTT <> kyber_zeta def
+R5320:5326 Moduletto.NTT <> kyber_q def
+R5340:5342 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R5333:5339 Moduletto.NTT <> kyber_q def

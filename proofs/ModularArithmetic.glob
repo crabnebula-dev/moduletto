@@ -1,0 +1,782 @@
+DIGEST bbcfa050bd4a13c7a8cdc8c869778626
+FModuletto.ModularArithmetic
+R308:313 Stdlib.ZArith.ZArith <> <> lib
+R343:345 Stdlib.micromega.Lia <> <> lib
+R375:378 Stdlib.ZArith.Zdiv <> <> lib
+def 458:465 <> in_range
+R474:474 Corelib.Numbers.BinNums <> Z ind
+binder 468:468 <> x:1
+binder 470:470 <> N:2
+R493:496 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R488:491 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R492:492 Moduletto.ModularArithmetic <> x:1 var
+R498:500 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R497:497 Moduletto.ModularArithmetic <> x:1 var
+R501:501 Moduletto.ModularArithmetic <> N:2 var
+def 775:784 <> vt_mod_add
+R795:795 Corelib.Numbers.BinNums <> Z ind
+binder 787:787 <> a:3
+binder 789:789 <> b:4
+binder 791:791 <> N:5
+R800:800 Corelib.Numbers.BinNums <> Z ind
+R819:821 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R818:818 Moduletto.ModularArithmetic <> a:3 var
+R822:822 Moduletto.ModularArithmetic <> b:4 var
+binder 811:813 <> sum:6
+R832:836 Stdlib.ZArith.BinInt Z leb def
+R838:838 Moduletto.ModularArithmetic <> N:5 var
+R840:842 Moduletto.ModularArithmetic <> sum:6 var
+R862:864 Moduletto.ModularArithmetic <> sum:6 var
+R852:854 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R849:851 Moduletto.ModularArithmetic <> sum:6 var
+R855:855 Moduletto.ModularArithmetic <> N:5 var
+prf 876:893 <> vt_mod_add_correct
+binder 906:906 <> a:7
+binder 908:908 <> b:8
+binder 910:910 <> N:9
+R922:929 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R918:920 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R917:917 Moduletto.ModularArithmetic <> N:9 var
+R942:949 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R930:937 Moduletto.ModularArithmetic <> in_range def
+R939:939 Moduletto.ModularArithmetic <> a:7 var
+R941:941 Moduletto.ModularArithmetic <> N:9 var
+R962:969 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R950:957 Moduletto.ModularArithmetic <> in_range def
+R959:959 Moduletto.ModularArithmetic <> b:8 var
+R961:961 Moduletto.ModularArithmetic <> N:9 var
+R986:988 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R970:979 Moduletto.ModularArithmetic <> vt_mod_add def
+R981:981 Moduletto.ModularArithmetic <> a:7 var
+R983:983 Moduletto.ModularArithmetic <> b:8 var
+R985:985 Moduletto.ModularArithmetic <> N:9 var
+R989:989 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R995:1000 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R991:993 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R990:990 Moduletto.ModularArithmetic <> a:7 var
+R994:994 Moduletto.ModularArithmetic <> b:8 var
+R1001:1001 Moduletto.ModularArithmetic <> N:9 var
+R1059:1068 Moduletto.ModularArithmetic <> vt_mod_add def
+R1083:1087 Stdlib.ZArith.BinInt Z leb def
+R1093:1095 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1083:1087 Stdlib.ZArith.BinInt Z leb def
+R1093:1095 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1120:1127 Stdlib.ZArith.BinInt Z leb_le thm
+R1120:1127 Stdlib.ZArith.BinInt Z leb_le thm
+R1149:1159 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R1163:1165 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1179:1181 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1175:1177 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1149:1159 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R1163:1165 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1179:1181 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1175:1177 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1202:1209 Stdlib.ZArith.BinInt Z leb_gt thm
+R1202:1209 Stdlib.ZArith.BinInt Z leb_gt thm
+R1231:1241 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R1245:1247 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1257:1259 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1231:1241 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R1245:1247 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1257:1259 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+def 1332:1341 <> vt_mod_sub
+R1352:1352 Corelib.Numbers.BinNums <> Z ind
+binder 1344:1344 <> a:10
+binder 1346:1346 <> b:11
+binder 1348:1348 <> N:12
+R1357:1357 Corelib.Numbers.BinNums <> Z ind
+R1377:1379 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1376:1376 Moduletto.ModularArithmetic <> a:10 var
+R1380:1380 Moduletto.ModularArithmetic <> b:11 var
+binder 1368:1371 <> diff:13
+R1390:1394 Stdlib.ZArith.BinInt Z ltb def
+R1396:1399 Moduletto.ModularArithmetic <> diff:13 var
+R1422:1425 Moduletto.ModularArithmetic <> diff:13 var
+R1412:1414 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1408:1411 Moduletto.ModularArithmetic <> diff:13 var
+R1415:1415 Moduletto.ModularArithmetic <> N:12 var
+prf 1437:1454 <> vt_mod_sub_correct
+binder 1467:1467 <> a:14
+binder 1469:1469 <> b:15
+binder 1471:1471 <> N:16
+R1483:1490 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1479:1481 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R1478:1478 Moduletto.ModularArithmetic <> N:16 var
+R1503:1510 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1491:1498 Moduletto.ModularArithmetic <> in_range def
+R1500:1500 Moduletto.ModularArithmetic <> a:14 var
+R1502:1502 Moduletto.ModularArithmetic <> N:16 var
+R1523:1530 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1511:1518 Moduletto.ModularArithmetic <> in_range def
+R1520:1520 Moduletto.ModularArithmetic <> b:15 var
+R1522:1522 Moduletto.ModularArithmetic <> N:16 var
+R1547:1549 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1531:1540 Moduletto.ModularArithmetic <> vt_mod_sub def
+R1542:1542 Moduletto.ModularArithmetic <> a:14 var
+R1544:1544 Moduletto.ModularArithmetic <> b:15 var
+R1546:1546 Moduletto.ModularArithmetic <> N:16 var
+R1550:1550 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R1556:1561 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R1552:1554 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1551:1551 Moduletto.ModularArithmetic <> a:14 var
+R1555:1555 Moduletto.ModularArithmetic <> b:15 var
+R1562:1562 Moduletto.ModularArithmetic <> N:16 var
+R1620:1629 Moduletto.ModularArithmetic <> vt_mod_sub def
+R1644:1648 Stdlib.ZArith.BinInt Z ltb def
+R1652:1654 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1644:1648 Stdlib.ZArith.BinInt Z ltb def
+R1652:1654 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1681:1688 Stdlib.ZArith.BinInt Z ltb_lt thm
+R1681:1688 Stdlib.ZArith.BinInt Z ltb_lt thm
+R1710:1720 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R1724:1726 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1743:1745 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1739:1741 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1710:1720 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R1724:1726 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1743:1745 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R1739:1741 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1766:1773 Stdlib.ZArith.BinInt Z ltb_ge thm
+R1766:1773 Stdlib.ZArith.BinInt Z ltb_ge thm
+R1795:1805 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R1809:1811 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1821:1823 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1795:1805 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R1809:1811 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1821:1823 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+def 1885:1894 <> vt_mod_neg
+R1903:1903 Corelib.Numbers.BinNums <> Z ind
+binder 1897:1897 <> a:17
+binder 1899:1899 <> N:18
+R1908:1908 Corelib.Numbers.BinNums <> Z ind
+R1918:1922 Stdlib.ZArith.BinInt Z eqb def
+R1924:1924 Moduletto.ModularArithmetic <> a:17 var
+R1941:1943 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R1940:1940 Moduletto.ModularArithmetic <> N:18 var
+R1944:1944 Moduletto.ModularArithmetic <> a:17 var
+prf 1956:1973 <> vt_mod_neg_correct
+binder 1986:1986 <> a:19
+binder 1988:1988 <> N:20
+R2000:2007 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R1996:1998 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R1995:1995 Moduletto.ModularArithmetic <> N:20 var
+R2020:2027 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R2008:2015 Moduletto.ModularArithmetic <> in_range def
+R2017:2017 Moduletto.ModularArithmetic <> a:19 var
+R2019:2019 Moduletto.ModularArithmetic <> N:20 var
+R2042:2044 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2028:2037 Moduletto.ModularArithmetic <> vt_mod_neg def
+R2039:2039 Moduletto.ModularArithmetic <> a:19 var
+R2041:2041 Moduletto.ModularArithmetic <> N:20 var
+R2045:2045 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2051:2056 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2047:2049 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R2046:2046 Moduletto.ModularArithmetic <> N:20 var
+R2050:2050 Moduletto.ModularArithmetic <> a:19 var
+R2057:2057 Moduletto.ModularArithmetic <> N:20 var
+R2103:2112 Moduletto.ModularArithmetic <> vt_mod_neg def
+R2127:2131 Stdlib.ZArith.BinInt Z eqb def
+R2127:2131 Stdlib.ZArith.BinInt Z eqb def
+R2157:2164 Stdlib.ZArith.BinInt Z eqb_eq thm
+R2157:2164 Stdlib.ZArith.BinInt Z eqb_eq thm
+R2189:2197 Stdlib.ZArith.BinInt Z sub_0_r thm
+R2189:2197 Stdlib.ZArith.BinInt Z sub_0_r thm
+R2189:2197 Stdlib.ZArith.BinInt Z sub_0_r thm
+R2211:2221 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R2211:2221 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R2248:2256 Stdlib.ZArith.BinInt Z eqb_neq thm
+R2248:2256 Stdlib.ZArith.BinInt Z eqb_neq thm
+R2277:2287 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R2291:2293 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R2303:2305 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R2277:2287 Stdlib.ZArith.Zdiv <> Zmod_unique thm
+R2291:2293 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R2303:2305 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+def 2858:2866 <> sign_mask
+R2873:2873 Corelib.Numbers.BinNums <> Z ind
+binder 2869:2869 <> x:21
+R2878:2878 Corelib.Numbers.BinNums <> Z ind
+R2888:2892 Stdlib.ZArith.BinInt Z ltb def
+R2894:2894 Moduletto.ModularArithmetic <> x:21 var
+def 2926:2935 <> ct_mod_add
+R2946:2946 Corelib.Numbers.BinNums <> Z ind
+binder 2938:2938 <> a:22
+binder 2940:2940 <> b:23
+binder 2942:2942 <> N:24
+R2951:2951 Corelib.Numbers.BinNums <> Z ind
+R2970:2972 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R2969:2969 Moduletto.ModularArithmetic <> a:22 var
+R2973:2973 Moduletto.ModularArithmetic <> b:23 var
+binder 2962:2964 <> sum:25
+R3003:3011 Moduletto.ModularArithmetic <> sign_mask def
+R3019:3021 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R3015:3017 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R3014:3014 Moduletto.ModularArithmetic <> N:24 var
+R3022:3024 Moduletto.ModularArithmetic <> sum:25 var
+binder 2984:2998 <> needs_reduction:26
+R3050:3052 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R3047:3049 Moduletto.ModularArithmetic <> sum:25 var
+R3053:3053 Moduletto.ModularArithmetic <> N:24 var
+binder 3036:3042 <> reduced:27
+R3060:3064 Stdlib.ZArith.BinInt Z lor def
+R3067:3072 Stdlib.ZArith.BinInt Z land def
+R3074:3080 Moduletto.ModularArithmetic <> reduced:27 var
+R3082:3096 Moduletto.ModularArithmetic <> needs_reduction:26 var
+R3100:3105 Stdlib.ZArith.BinInt Z land def
+R3107:3109 Moduletto.ModularArithmetic <> sum:25 var
+R3112:3117 Stdlib.ZArith.BinInt Z lnot def
+R3119:3133 Moduletto.ModularArithmetic <> needs_reduction:26 var
+prf 3199:3211 <> sign_mask_neg
+binder 3222:3222 <> x:28
+R3230:3233 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R3226:3228 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R3225:3225 Moduletto.ModularArithmetic <> x:28 var
+R3245:3247 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3234:3242 Moduletto.ModularArithmetic <> sign_mask def
+R3244:3244 Moduletto.ModularArithmetic <> x:28 var
+R3276:3284 Moduletto.ModularArithmetic <> sign_mask def
+R3299:3303 Stdlib.ZArith.BinInt Z ltb def
+R3299:3303 Stdlib.ZArith.BinInt Z ltb def
+R3331:3338 Stdlib.ZArith.BinInt Z ltb_ge thm
+R3331:3338 Stdlib.ZArith.BinInt Z ltb_ge thm
+prf 3363:3378 <> sign_mask_nonneg
+binder 3389:3389 <> x:29
+R3398:3401 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R3393:3396 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>='_x not
+R3392:3392 Moduletto.ModularArithmetic <> x:29 var
+R3413:3415 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3402:3410 Moduletto.ModularArithmetic <> sign_mask def
+R3412:3412 Moduletto.ModularArithmetic <> x:29 var
+R3443:3451 Moduletto.ModularArithmetic <> sign_mask def
+R3466:3470 Stdlib.ZArith.BinInt Z ltb def
+R3466:3470 Stdlib.ZArith.BinInt Z ltb def
+R3498:3505 Stdlib.ZArith.BinInt Z ltb_lt thm
+R3498:3505 Stdlib.ZArith.BinInt Z ltb_lt thm
+prf 3602:3620 <> bitmask_select_neg1
+binder 3631:3631 <> x:30
+binder 3633:3633 <> y:31
+R3684:3686 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3638:3642 Stdlib.ZArith.BinInt Z lor def
+R3645:3650 Stdlib.ZArith.BinInt Z land def
+R3652:3652 Moduletto.ModularArithmetic <> x:30 var
+R3661:3666 Stdlib.ZArith.BinInt Z land def
+R3668:3668 Moduletto.ModularArithmetic <> y:31 var
+R3671:3676 Stdlib.ZArith.BinInt Z lnot def
+R3687:3687 Moduletto.ModularArithmetic <> x:30 var
+R3718:3723 Stdlib.ZArith.BinInt Z lnot def
+R3718:3723 Stdlib.ZArith.BinInt Z lnot def
+R3764:3773 Stdlib.ZArith.BinInt Z land_0_r thm
+R3764:3773 Stdlib.ZArith.BinInt Z land_0_r thm
+R3764:3773 Stdlib.ZArith.BinInt Z land_0_r thm
+R3784:3792 Stdlib.ZArith.BinInt Z lor_0_r thm
+R3784:3792 Stdlib.ZArith.BinInt Z lor_0_r thm
+R3784:3792 Stdlib.ZArith.BinInt Z lor_0_r thm
+R3805:3815 Stdlib.ZArith.BinInt Z land_m1_r thm
+R3805:3815 Stdlib.ZArith.BinInt Z land_m1_r thm
+R3805:3815 Stdlib.ZArith.BinInt Z land_m1_r thm
+prf 3843:3858 <> bitmask_select_0
+binder 3869:3869 <> x:32
+binder 3871:3871 <> y:33
+R3916:3918 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3876:3880 Stdlib.ZArith.BinInt Z lor def
+R3883:3888 Stdlib.ZArith.BinInt Z land def
+R3890:3890 Moduletto.ModularArithmetic <> x:32 var
+R3896:3901 Stdlib.ZArith.BinInt Z land def
+R3903:3903 Moduletto.ModularArithmetic <> y:33 var
+R3906:3911 Stdlib.ZArith.BinInt Z lnot def
+R3919:3919 Moduletto.ModularArithmetic <> y:33 var
+R3950:3955 Stdlib.ZArith.BinInt Z lnot def
+R3950:3955 Stdlib.ZArith.BinInt Z lnot def
+R3996:4005 Stdlib.ZArith.BinInt Z land_0_r thm
+R3996:4005 Stdlib.ZArith.BinInt Z land_0_r thm
+R3996:4005 Stdlib.ZArith.BinInt Z land_0_r thm
+R4016:4024 Stdlib.ZArith.BinInt Z lor_0_l thm
+R4016:4024 Stdlib.ZArith.BinInt Z lor_0_l thm
+R4016:4024 Stdlib.ZArith.BinInt Z lor_0_l thm
+R4037:4047 Stdlib.ZArith.BinInt Z land_m1_r thm
+R4037:4047 Stdlib.ZArith.BinInt Z land_m1_r thm
+R4037:4047 Stdlib.ZArith.BinInt Z land_m1_r thm
+prf 4077:4095 <> ct_mod_add_equiv_vt
+binder 4108:4108 <> a:34
+binder 4110:4110 <> b:35
+binder 4112:4112 <> N:36
+R4124:4131 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4120:4122 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R4119:4119 Moduletto.ModularArithmetic <> N:36 var
+R4144:4151 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4132:4139 Moduletto.ModularArithmetic <> in_range def
+R4141:4141 Moduletto.ModularArithmetic <> a:34 var
+R4143:4143 Moduletto.ModularArithmetic <> N:36 var
+R4164:4171 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4152:4159 Moduletto.ModularArithmetic <> in_range def
+R4161:4161 Moduletto.ModularArithmetic <> b:35 var
+R4163:4163 Moduletto.ModularArithmetic <> N:36 var
+R4188:4190 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4172:4181 Moduletto.ModularArithmetic <> ct_mod_add def
+R4183:4183 Moduletto.ModularArithmetic <> a:34 var
+R4185:4185 Moduletto.ModularArithmetic <> b:35 var
+R4187:4187 Moduletto.ModularArithmetic <> N:36 var
+R4191:4200 Moduletto.ModularArithmetic <> vt_mod_add def
+R4202:4202 Moduletto.ModularArithmetic <> a:34 var
+R4204:4204 Moduletto.ModularArithmetic <> b:35 var
+R4206:4206 Moduletto.ModularArithmetic <> N:36 var
+R4264:4273 Moduletto.ModularArithmetic <> ct_mod_add def
+R4276:4285 Moduletto.ModularArithmetic <> vt_mod_add def
+R4300:4304 Stdlib.ZArith.BinInt Z leb def
+R4310:4312 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4300:4304 Stdlib.ZArith.BinInt Z leb def
+R4310:4312 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4337:4344 Stdlib.ZArith.BinInt Z leb_le thm
+R4337:4344 Stdlib.ZArith.BinInt Z leb_le thm
+R4401:4403 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4374:4382 Moduletto.ModularArithmetic <> sign_mask def
+R4390:4393 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4399:4399 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4386:4388 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4395:4397 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4401:4403 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4374:4382 Moduletto.ModularArithmetic <> sign_mask def
+R4390:4393 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4399:4399 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4386:4388 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4395:4397 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4421:4433 Moduletto.ModularArithmetic <> sign_mask_neg thm
+R4421:4433 Moduletto.ModularArithmetic <> sign_mask_neg thm
+R4468:4486 Moduletto.ModularArithmetic <> bitmask_select_neg1 thm
+R4468:4486 Moduletto.ModularArithmetic <> bitmask_select_neg1 thm
+R4499:4506 Stdlib.ZArith.BinInt Z leb_gt thm
+R4499:4506 Stdlib.ZArith.BinInt Z leb_gt thm
+R4563:4565 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4536:4544 Moduletto.ModularArithmetic <> sign_mask def
+R4552:4555 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4561:4561 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4548:4550 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4557:4559 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4563:4565 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4536:4544 Moduletto.ModularArithmetic <> sign_mask def
+R4552:4555 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4561:4561 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4548:4550 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R4557:4559 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4582:4597 Moduletto.ModularArithmetic <> sign_mask_nonneg thm
+R4582:4597 Moduletto.ModularArithmetic <> sign_mask_nonneg thm
+R4632:4647 Moduletto.ModularArithmetic <> bitmask_select_0 thm
+R4632:4647 Moduletto.ModularArithmetic <> bitmask_select_0 thm
+prf 4705:4722 <> ct_mod_add_correct
+binder 4735:4735 <> a:37
+binder 4737:4737 <> b:38
+binder 4739:4739 <> N:39
+R4751:4758 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4747:4749 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R4746:4746 Moduletto.ModularArithmetic <> N:39 var
+R4771:4778 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4759:4766 Moduletto.ModularArithmetic <> in_range def
+R4768:4768 Moduletto.ModularArithmetic <> a:37 var
+R4770:4770 Moduletto.ModularArithmetic <> N:39 var
+R4791:4798 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R4779:4786 Moduletto.ModularArithmetic <> in_range def
+R4788:4788 Moduletto.ModularArithmetic <> b:38 var
+R4790:4790 Moduletto.ModularArithmetic <> N:39 var
+R4815:4817 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4799:4808 Moduletto.ModularArithmetic <> ct_mod_add def
+R4810:4810 Moduletto.ModularArithmetic <> a:37 var
+R4812:4812 Moduletto.ModularArithmetic <> b:38 var
+R4814:4814 Moduletto.ModularArithmetic <> N:39 var
+R4818:4818 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R4824:4829 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R4820:4822 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4819:4819 Moduletto.ModularArithmetic <> a:37 var
+R4823:4823 Moduletto.ModularArithmetic <> b:38 var
+R4830:4830 Moduletto.ModularArithmetic <> N:39 var
+R4858:4876 Moduletto.ModularArithmetic <> ct_mod_add_equiv_vt thm
+R4858:4876 Moduletto.ModularArithmetic <> ct_mod_add_equiv_vt thm
+R4858:4876 Moduletto.ModularArithmetic <> ct_mod_add_equiv_vt thm
+R4858:4876 Moduletto.ModularArithmetic <> ct_mod_add_equiv_vt thm
+R4858:4876 Moduletto.ModularArithmetic <> ct_mod_add_equiv_vt thm
+R4858:4876 Moduletto.ModularArithmetic <> ct_mod_add_equiv_vt thm
+R4891:4908 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R4891:4908 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+def 4992:5001 <> ct_mod_sub
+R5012:5012 Corelib.Numbers.BinNums <> Z ind
+binder 5004:5004 <> a:40
+binder 5006:5006 <> b:41
+binder 5008:5008 <> N:42
+R5017:5017 Corelib.Numbers.BinNums <> Z ind
+R5037:5039 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R5036:5036 Moduletto.ModularArithmetic <> a:40 var
+R5040:5040 Moduletto.ModularArithmetic <> b:41 var
+binder 5028:5031 <> diff:43
+R5071:5079 Moduletto.ModularArithmetic <> sign_mask def
+R5081:5084 Moduletto.ModularArithmetic <> diff:43 var
+binder 5051:5066 <> needs_adjustment:44
+R5111:5113 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R5107:5110 Moduletto.ModularArithmetic <> diff:43 var
+R5114:5114 Moduletto.ModularArithmetic <> N:42 var
+binder 5095:5102 <> adjusted:45
+R5121:5125 Stdlib.ZArith.BinInt Z lor def
+R5128:5133 Stdlib.ZArith.BinInt Z land def
+R5135:5142 Moduletto.ModularArithmetic <> adjusted:45 var
+R5144:5159 Moduletto.ModularArithmetic <> needs_adjustment:44 var
+R5163:5168 Stdlib.ZArith.BinInt Z land def
+R5170:5173 Moduletto.ModularArithmetic <> diff:43 var
+R5176:5181 Stdlib.ZArith.BinInt Z lnot def
+R5183:5198 Moduletto.ModularArithmetic <> needs_adjustment:44 var
+prf 5212:5230 <> ct_mod_sub_equiv_vt
+binder 5243:5243 <> a:46
+binder 5245:5245 <> b:47
+binder 5247:5247 <> N:48
+R5259:5266 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5255:5257 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R5254:5254 Moduletto.ModularArithmetic <> N:48 var
+R5279:5286 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5267:5274 Moduletto.ModularArithmetic <> in_range def
+R5276:5276 Moduletto.ModularArithmetic <> a:46 var
+R5278:5278 Moduletto.ModularArithmetic <> N:48 var
+R5299:5306 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5287:5294 Moduletto.ModularArithmetic <> in_range def
+R5296:5296 Moduletto.ModularArithmetic <> b:47 var
+R5298:5298 Moduletto.ModularArithmetic <> N:48 var
+R5323:5325 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5307:5316 Moduletto.ModularArithmetic <> ct_mod_sub def
+R5318:5318 Moduletto.ModularArithmetic <> a:46 var
+R5320:5320 Moduletto.ModularArithmetic <> b:47 var
+R5322:5322 Moduletto.ModularArithmetic <> N:48 var
+R5326:5335 Moduletto.ModularArithmetic <> vt_mod_sub def
+R5337:5337 Moduletto.ModularArithmetic <> a:46 var
+R5339:5339 Moduletto.ModularArithmetic <> b:47 var
+R5341:5341 Moduletto.ModularArithmetic <> N:48 var
+R5399:5408 Moduletto.ModularArithmetic <> ct_mod_sub def
+R5411:5420 Moduletto.ModularArithmetic <> vt_mod_sub def
+R5435:5439 Stdlib.ZArith.BinInt Z ltb def
+R5443:5445 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R5435:5439 Stdlib.ZArith.BinInt Z ltb def
+R5443:5445 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R5472:5479 Stdlib.ZArith.BinInt Z ltb_lt thm
+R5472:5479 Stdlib.ZArith.BinInt Z ltb_lt thm
+R5526:5528 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5509:5517 Moduletto.ModularArithmetic <> sign_mask def
+R5521:5523 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R5526:5528 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5509:5517 Moduletto.ModularArithmetic <> sign_mask def
+R5521:5523 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R5546:5558 Moduletto.ModularArithmetic <> sign_mask_neg thm
+R5546:5558 Moduletto.ModularArithmetic <> sign_mask_neg thm
+R5593:5611 Moduletto.ModularArithmetic <> bitmask_select_neg1 thm
+R5593:5611 Moduletto.ModularArithmetic <> bitmask_select_neg1 thm
+R5624:5631 Stdlib.ZArith.BinInt Z ltb_ge thm
+R5624:5631 Stdlib.ZArith.BinInt Z ltb_ge thm
+R5678:5680 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5661:5669 Moduletto.ModularArithmetic <> sign_mask def
+R5673:5675 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R5678:5680 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5661:5669 Moduletto.ModularArithmetic <> sign_mask def
+R5673:5675 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R5697:5712 Moduletto.ModularArithmetic <> sign_mask_nonneg thm
+R5697:5712 Moduletto.ModularArithmetic <> sign_mask_nonneg thm
+R5747:5762 Moduletto.ModularArithmetic <> bitmask_select_0 thm
+R5747:5762 Moduletto.ModularArithmetic <> bitmask_select_0 thm
+prf 5779:5796 <> ct_mod_sub_correct
+binder 5809:5809 <> a:49
+binder 5811:5811 <> b:50
+binder 5813:5813 <> N:51
+R5825:5832 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5821:5823 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R5820:5820 Moduletto.ModularArithmetic <> N:51 var
+R5845:5852 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5833:5840 Moduletto.ModularArithmetic <> in_range def
+R5842:5842 Moduletto.ModularArithmetic <> a:49 var
+R5844:5844 Moduletto.ModularArithmetic <> N:51 var
+R5865:5872 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R5853:5860 Moduletto.ModularArithmetic <> in_range def
+R5862:5862 Moduletto.ModularArithmetic <> b:50 var
+R5864:5864 Moduletto.ModularArithmetic <> N:51 var
+R5889:5891 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5873:5882 Moduletto.ModularArithmetic <> ct_mod_sub def
+R5884:5884 Moduletto.ModularArithmetic <> a:49 var
+R5886:5886 Moduletto.ModularArithmetic <> b:50 var
+R5888:5888 Moduletto.ModularArithmetic <> N:51 var
+R5892:5892 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R5898:5903 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R5894:5896 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R5893:5893 Moduletto.ModularArithmetic <> a:49 var
+R5897:5897 Moduletto.ModularArithmetic <> b:50 var
+R5904:5904 Moduletto.ModularArithmetic <> N:51 var
+R5932:5950 Moduletto.ModularArithmetic <> ct_mod_sub_equiv_vt thm
+R5932:5950 Moduletto.ModularArithmetic <> ct_mod_sub_equiv_vt thm
+R5932:5950 Moduletto.ModularArithmetic <> ct_mod_sub_equiv_vt thm
+R5932:5950 Moduletto.ModularArithmetic <> ct_mod_sub_equiv_vt thm
+R5932:5950 Moduletto.ModularArithmetic <> ct_mod_sub_equiv_vt thm
+R5932:5950 Moduletto.ModularArithmetic <> ct_mod_sub_equiv_vt thm
+R5965:5982 Moduletto.ModularArithmetic <> vt_mod_sub_correct thm
+R5965:5982 Moduletto.ModularArithmetic <> vt_mod_sub_correct thm
+prf 6061:6079 <> vt_mod_add_in_range
+binder 6092:6092 <> a:52
+binder 6094:6094 <> b:53
+binder 6096:6096 <> N:54
+R6108:6115 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6104:6106 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R6103:6103 Moduletto.ModularArithmetic <> N:54 var
+R6128:6135 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6116:6123 Moduletto.ModularArithmetic <> in_range def
+R6125:6125 Moduletto.ModularArithmetic <> a:52 var
+R6127:6127 Moduletto.ModularArithmetic <> N:54 var
+R6148:6155 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6136:6143 Moduletto.ModularArithmetic <> in_range def
+R6145:6145 Moduletto.ModularArithmetic <> b:53 var
+R6147:6147 Moduletto.ModularArithmetic <> N:54 var
+R6156:6163 Moduletto.ModularArithmetic <> in_range def
+R6166:6175 Moduletto.ModularArithmetic <> vt_mod_add def
+R6177:6177 Moduletto.ModularArithmetic <> a:52 var
+R6179:6179 Moduletto.ModularArithmetic <> b:53 var
+R6181:6181 Moduletto.ModularArithmetic <> N:54 var
+R6184:6184 Moduletto.ModularArithmetic <> N:54 var
+R6242:6251 Moduletto.ModularArithmetic <> vt_mod_add def
+R6254:6261 Moduletto.ModularArithmetic <> in_range def
+R6276:6280 Stdlib.ZArith.BinInt Z leb def
+R6286:6288 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R6276:6280 Stdlib.ZArith.BinInt Z leb def
+R6286:6288 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R6313:6320 Stdlib.ZArith.BinInt Z leb_le thm
+R6313:6320 Stdlib.ZArith.BinInt Z leb_le thm
+R6346:6353 Stdlib.ZArith.BinInt Z leb_gt thm
+R6346:6353 Stdlib.ZArith.BinInt Z leb_gt thm
+prf 6383:6401 <> vt_mod_sub_in_range
+binder 6414:6414 <> a:55
+binder 6416:6416 <> b:56
+binder 6418:6418 <> N:57
+R6430:6437 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6426:6428 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R6425:6425 Moduletto.ModularArithmetic <> N:57 var
+R6450:6457 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6438:6445 Moduletto.ModularArithmetic <> in_range def
+R6447:6447 Moduletto.ModularArithmetic <> a:55 var
+R6449:6449 Moduletto.ModularArithmetic <> N:57 var
+R6470:6477 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6458:6465 Moduletto.ModularArithmetic <> in_range def
+R6467:6467 Moduletto.ModularArithmetic <> b:56 var
+R6469:6469 Moduletto.ModularArithmetic <> N:57 var
+R6478:6485 Moduletto.ModularArithmetic <> in_range def
+R6488:6497 Moduletto.ModularArithmetic <> vt_mod_sub def
+R6499:6499 Moduletto.ModularArithmetic <> a:55 var
+R6501:6501 Moduletto.ModularArithmetic <> b:56 var
+R6503:6503 Moduletto.ModularArithmetic <> N:57 var
+R6506:6506 Moduletto.ModularArithmetic <> N:57 var
+R6564:6573 Moduletto.ModularArithmetic <> vt_mod_sub def
+R6576:6583 Moduletto.ModularArithmetic <> in_range def
+R6598:6602 Stdlib.ZArith.BinInt Z ltb def
+R6606:6608 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R6598:6602 Stdlib.ZArith.BinInt Z ltb def
+R6606:6608 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R6635:6642 Stdlib.ZArith.BinInt Z ltb_lt thm
+R6635:6642 Stdlib.ZArith.BinInt Z ltb_lt thm
+R6668:6675 Stdlib.ZArith.BinInt Z ltb_ge thm
+R6668:6675 Stdlib.ZArith.BinInt Z ltb_ge thm
+prf 6705:6723 <> vt_mod_neg_in_range
+binder 6736:6736 <> a:58
+binder 6738:6738 <> N:59
+R6750:6757 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6746:6748 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R6745:6745 Moduletto.ModularArithmetic <> N:59 var
+R6770:6777 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R6758:6765 Moduletto.ModularArithmetic <> in_range def
+R6767:6767 Moduletto.ModularArithmetic <> a:58 var
+R6769:6769 Moduletto.ModularArithmetic <> N:59 var
+R6778:6785 Moduletto.ModularArithmetic <> in_range def
+R6788:6797 Moduletto.ModularArithmetic <> vt_mod_neg def
+R6799:6799 Moduletto.ModularArithmetic <> a:58 var
+R6801:6801 Moduletto.ModularArithmetic <> N:59 var
+R6804:6804 Moduletto.ModularArithmetic <> N:59 var
+R6850:6859 Moduletto.ModularArithmetic <> vt_mod_neg def
+R6862:6869 Moduletto.ModularArithmetic <> in_range def
+R6884:6888 Stdlib.ZArith.BinInt Z eqb def
+R6884:6888 Stdlib.ZArith.BinInt Z eqb def
+R6923:6931 Stdlib.ZArith.BinInt Z eqb_neq thm
+R6923:6931 Stdlib.ZArith.BinInt Z eqb_neq thm
+def 7009:7015 <> mod_mul
+R7026:7026 Corelib.Numbers.BinNums <> Z ind
+binder 7018:7018 <> a:60
+binder 7020:7020 <> b:61
+binder 7022:7022 <> N:62
+R7031:7031 Corelib.Numbers.BinNums <> Z ind
+R7038:7038 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R7044:7049 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R7040:7042 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R7039:7039 Moduletto.ModularArithmetic <> a:60 var
+R7043:7043 Moduletto.ModularArithmetic <> b:61 var
+R7050:7050 Moduletto.ModularArithmetic <> N:62 var
+prf 7062:7077 <> mod_mul_in_range
+binder 7090:7090 <> a:63
+binder 7092:7092 <> b:64
+binder 7094:7094 <> N:65
+R7106:7113 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7102:7104 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R7101:7101 Moduletto.ModularArithmetic <> N:65 var
+R7126:7133 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7114:7121 Moduletto.ModularArithmetic <> in_range def
+R7123:7123 Moduletto.ModularArithmetic <> a:63 var
+R7125:7125 Moduletto.ModularArithmetic <> N:65 var
+R7146:7153 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7134:7141 Moduletto.ModularArithmetic <> in_range def
+R7143:7143 Moduletto.ModularArithmetic <> b:64 var
+R7145:7145 Moduletto.ModularArithmetic <> N:65 var
+R7154:7161 Moduletto.ModularArithmetic <> in_range def
+R7164:7170 Moduletto.ModularArithmetic <> mod_mul def
+R7172:7172 Moduletto.ModularArithmetic <> a:63 var
+R7174:7174 Moduletto.ModularArithmetic <> b:64 var
+R7176:7176 Moduletto.ModularArithmetic <> N:65 var
+R7179:7179 Moduletto.ModularArithmetic <> N:65 var
+R7223:7229 Moduletto.ModularArithmetic <> mod_mul def
+R7232:7239 Moduletto.ModularArithmetic <> in_range def
+R7261:7275 Stdlib.ZArith.BinInt Z mod_pos_bound thm
+R7261:7275 Stdlib.ZArith.BinInt Z mod_pos_bound thm
+R7293:7307 Stdlib.ZArith.BinInt Z mod_pos_bound thm
+R7293:7307 Stdlib.ZArith.BinInt Z mod_pos_bound thm
+prf 7361:7372 <> mod_add_comm
+binder 7385:7385 <> a:66
+binder 7387:7387 <> b:67
+binder 7389:7389 <> N:68
+R7401:7408 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7397:7399 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R7396:7396 Moduletto.ModularArithmetic <> N:68 var
+R7421:7428 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7409:7416 Moduletto.ModularArithmetic <> in_range def
+R7418:7418 Moduletto.ModularArithmetic <> a:66 var
+R7420:7420 Moduletto.ModularArithmetic <> N:68 var
+R7441:7448 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7429:7436 Moduletto.ModularArithmetic <> in_range def
+R7438:7438 Moduletto.ModularArithmetic <> b:67 var
+R7440:7440 Moduletto.ModularArithmetic <> N:68 var
+R7465:7467 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R7449:7458 Moduletto.ModularArithmetic <> vt_mod_add def
+R7460:7460 Moduletto.ModularArithmetic <> a:66 var
+R7462:7462 Moduletto.ModularArithmetic <> b:67 var
+R7464:7464 Moduletto.ModularArithmetic <> N:68 var
+R7468:7477 Moduletto.ModularArithmetic <> vt_mod_add def
+R7479:7479 Moduletto.ModularArithmetic <> b:67 var
+R7481:7481 Moduletto.ModularArithmetic <> a:66 var
+R7483:7483 Moduletto.ModularArithmetic <> N:68 var
+R7528:7545 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7528:7545 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7528:7545 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7528:7545 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7528:7545 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7528:7545 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7564:7581 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7564:7581 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7564:7581 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7564:7581 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7564:7581 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+R7564:7581 Moduletto.ModularArithmetic <> vt_mod_add_correct thm
+prf 7620:7635 <> mod_add_identity
+binder 7648:7648 <> a:69
+binder 7650:7650 <> N:70
+R7662:7669 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7658:7660 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R7657:7657 Moduletto.ModularArithmetic <> N:70 var
+R7682:7689 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7670:7677 Moduletto.ModularArithmetic <> in_range def
+R7679:7679 Moduletto.ModularArithmetic <> a:69 var
+R7681:7681 Moduletto.ModularArithmetic <> N:70 var
+R7706:7708 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R7690:7699 Moduletto.ModularArithmetic <> vt_mod_add def
+R7701:7701 Moduletto.ModularArithmetic <> a:69 var
+R7705:7705 Moduletto.ModularArithmetic <> N:70 var
+R7709:7709 Moduletto.ModularArithmetic <> a:69 var
+R7755:7764 Moduletto.ModularArithmetic <> vt_mod_add def
+R7779:7781 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R7779:7781 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R7812:7816 Stdlib.ZArith.BinInt Z leb def
+R7812:7816 Stdlib.ZArith.BinInt Z leb def
+R7843:7850 Stdlib.ZArith.BinInt Z leb_le thm
+R7843:7850 Stdlib.ZArith.BinInt Z leb_le thm
+prf 7897:7911 <> mod_add_inverse
+binder 7924:7924 <> a:71
+binder 7926:7926 <> N:72
+R7938:7945 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7934:7936 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R7933:7933 Moduletto.ModularArithmetic <> N:72 var
+R7958:7965 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R7946:7953 Moduletto.ModularArithmetic <> in_range def
+R7955:7955 Moduletto.ModularArithmetic <> a:71 var
+R7957:7957 Moduletto.ModularArithmetic <> N:72 var
+R7997:7999 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R7966:7975 Moduletto.ModularArithmetic <> vt_mod_add def
+R7977:7977 Moduletto.ModularArithmetic <> a:71 var
+R7980:7989 Moduletto.ModularArithmetic <> vt_mod_neg def
+R7991:7991 Moduletto.ModularArithmetic <> a:71 var
+R7993:7993 Moduletto.ModularArithmetic <> N:72 var
+R7996:7996 Moduletto.ModularArithmetic <> N:72 var
+R8046:8055 Moduletto.ModularArithmetic <> vt_mod_neg def
+R8058:8067 Moduletto.ModularArithmetic <> vt_mod_add def
+R8082:8086 Stdlib.ZArith.BinInt Z eqb def
+R8082:8086 Stdlib.ZArith.BinInt Z eqb def
+R8112:8119 Stdlib.ZArith.BinInt Z eqb_eq thm
+R8112:8119 Stdlib.ZArith.BinInt Z eqb_eq thm
+R8157:8161 Stdlib.ZArith.BinInt Z leb def
+R8157:8161 Stdlib.ZArith.BinInt Z leb def
+R8190:8198 Stdlib.ZArith.BinInt Z eqb_neq thm
+R8190:8198 Stdlib.ZArith.BinInt Z eqb_neq thm
+R8222:8225 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R8231:8231 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R8227:8229 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R8222:8225 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R8231:8231 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R8227:8229 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R8263:8267 Stdlib.ZArith.BinInt Z leb def
+R8263:8267 Stdlib.ZArith.BinInt Z leb def
+R8304:8311 Stdlib.ZArith.BinInt Z leb_gt thm
+R8304:8311 Stdlib.ZArith.BinInt Z leb_gt thm
+prf 8338:8349 <> mod_mul_comm
+binder 8362:8362 <> a:73
+binder 8364:8364 <> b:74
+binder 8366:8366 <> N:75
+R8378:8385 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R8374:8376 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R8373:8373 Moduletto.ModularArithmetic <> N:75 var
+R8399:8401 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8386:8392 Moduletto.ModularArithmetic <> mod_mul def
+R8394:8394 Moduletto.ModularArithmetic <> a:73 var
+R8396:8396 Moduletto.ModularArithmetic <> b:74 var
+R8398:8398 Moduletto.ModularArithmetic <> N:75 var
+R8402:8408 Moduletto.ModularArithmetic <> mod_mul def
+R8410:8410 Moduletto.ModularArithmetic <> b:74 var
+R8412:8412 Moduletto.ModularArithmetic <> a:73 var
+R8414:8414 Moduletto.ModularArithmetic <> N:75 var
+R8441:8447 Moduletto.ModularArithmetic <> mod_mul def
+prf 8478:8493 <> mod_mul_identity
+binder 8506:8506 <> a:76
+binder 8508:8508 <> N:77
+R8520:8527 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R8516:8518 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R8515:8515 Moduletto.ModularArithmetic <> N:77 var
+R8540:8547 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R8528:8535 Moduletto.ModularArithmetic <> in_range def
+R8537:8537 Moduletto.ModularArithmetic <> a:76 var
+R8539:8539 Moduletto.ModularArithmetic <> N:77 var
+R8561:8563 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8548:8554 Moduletto.ModularArithmetic <> mod_mul def
+R8556:8556 Moduletto.ModularArithmetic <> a:76 var
+R8560:8560 Moduletto.ModularArithmetic <> N:77 var
+R8564:8564 Moduletto.ModularArithmetic <> a:76 var
+R8610:8616 Moduletto.ModularArithmetic <> mod_mul def
+R8627:8635 Stdlib.ZArith.BinInt Z mul_1_r thm
+R8627:8635 Stdlib.ZArith.BinInt Z mul_1_r thm
+R8627:8635 Stdlib.ZArith.BinInt Z mul_1_r thm
+R8646:8656 Stdlib.ZArith.BinInt Z mod_small thm
+R8646:8656 Stdlib.ZArith.BinInt Z mod_small thm
+prf 8678:8689 <> mod_mul_zero
+binder 8702:8702 <> a:78
+binder 8704:8704 <> N:79
+R8716:8723 Corelib.Init.Logic <> ::type_scope:x_'->'_x not
+R8712:8714 Stdlib.ZArith.BinInt <> ::Z_scope:x_'>'_x not
+R8711:8711 Moduletto.ModularArithmetic <> N:79 var
+R8737:8739 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8724:8730 Moduletto.ModularArithmetic <> mod_mul def
+R8732:8732 Moduletto.ModularArithmetic <> a:78 var
+R8736:8736 Moduletto.ModularArithmetic <> N:79 var
+R8767:8773 Moduletto.ModularArithmetic <> mod_mul def
+R8784:8792 Stdlib.ZArith.BinInt Z mul_0_r thm
+R8784:8792 Stdlib.ZArith.BinInt Z mul_0_r thm
+R8784:8792 Stdlib.ZArith.BinInt Z mul_0_r thm
+R8803:8811 Stdlib.ZArith.BinInt Z mod_0_l thm
+R8803:8811 Stdlib.ZArith.BinInt Z mod_0_l thm
