@@ -1,0 +1,52 @@
+[package]
+name = "moduletto-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+[dependencies.moduletto]
+path = ".."
+
+# ── Fuzz targets ────────────────────────────────────────────────────
+
+[[bin]]
+name = "fuzz_ct_arith"
+path = "fuzz_targets/fuzz_ct_arith.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_barrett"
+path = "fuzz_targets/fuzz_barrett.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_ntt_roundtrip"
+path = "fuzz_targets/fuzz_ntt_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_ct_primitives"
+path = "fuzz_targets/fuzz_ct_primitives.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_poly_mul"
+path = "fuzz_targets/fuzz_poly_mul.rs"
+test = false
+doc = false
+bench = false

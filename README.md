@@ -123,9 +123,37 @@ Kyber's modulus q=3329 fits in 12 bits. Using i16 coefficients with ARM64 NEON i
 
 The constant-time arithmetic is formally verified using Coq (Rocq 9.1) with an accompanying OCaml test harness.
 
+### Prerequisites
+
 ```bash
-cd proofs && make
+# macOS (Homebrew)
+brew install rocq opam
+
+# Linux (apt) — install opam, then use it for Rocq
+sudo apt install opam
+opam init
+opam install rocq-prover
 ```
+
+Requires Rocq/Coq >= 9.0 and OCaml >= 5.0.
+
+### Running
+
+```bash
+# Compile all Coq proofs and run OCaml tests
+cd proofs && make
+
+# Coq proofs only (type-checks all theorems)
+make coq
+
+# OCaml runtime tests only (27,000+ test cases)
+make ocaml
+
+# Clean build artifacts
+make clean
+```
+
+A successful `make coq` means every theorem has been machine-checked by the Rocq kernel -- no axioms are used except one `Admitted` lemma for NTT linearity (the inductive list proof is mechanical but lengthy; it is covered by the OCaml runtime tests instead).
 
 ### Coq proofs
 
@@ -137,6 +165,52 @@ cd proofs && make
 ### OCaml test harness
 
 - **`test_moduletto.ml`** -- 27,000+ runtime tests validating VT/CT agreement, Barrett reduction, CT primitives, and NTT root-of-unity properties across sampled Kyber coefficient ranges
+
+## Fuzzing (`fuzz/`)
+
+Coverage-guided fuzzing via [cargo-fuzz](https://github.com/rust-fuzz/cargo-fuzz) (libFuzzer). Requires a nightly toolchain.
+
+### Prerequisites
+
+```bash
+cargo install cargo-fuzz
+rustup toolchain install nightly
+```
+
+### Running
+
+```bash
+# Run a specific target (runs until stopped with Ctrl-C)
+cargo +nightly fuzz run fuzz_ct_arith
+
+# Run for a fixed duration
+cargo +nightly fuzz run fuzz_barrett -- -max_total_time=60
+
+# List all available targets
+cargo +nightly fuzz list
+
+# Run all targets for 30 seconds each
+for target in $(cargo +nightly fuzz list); do
+  echo "=== $target ==="
+  cargo +nightly fuzz run "$target" -- -max_total_time=30
+done
+```
+
+### Fuzz targets
+
+| Target | What it tests |
+|--------|---------------|
+| `fuzz_ct_arith` | CT vs VT equivalence for add/sub/mul/neg, range invariants, algebraic properties (identity, inverse, roundtrip) |
+| `fuzz_barrett` | Barrett reduction correctness across six different moduli (7, 127, 251, 257, 3329, 65537) |
+| `fuzz_ntt_roundtrip` | NTT -> INTT roundtrip for arbitrary polynomials, CT vs VT NTT agreement |
+| `fuzz_ct_primitives` | ct_select, ct_swap, ct_eq, ct_lt: specification compliance, reflexivity, double-swap identity |
+| `fuzz_poly_mul` | NTT polynomial multiplication vs schoolbook (ground truth), CT vs VT agreement |
+
+Crash artifacts are saved to `fuzz/artifacts/<target>/` and can be replayed with:
+
+```bash
+cargo +nightly fuzz run fuzz_ct_arith fuzz/artifacts/fuzz_ct_arith/<crash-file>
+```
 
 ## License
 
