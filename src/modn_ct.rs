@@ -11,6 +11,10 @@
 //! - Have constant memory access patterns
 //! - Do not leak secrets through timing side channels
 //!
+//! Side-channel resistance is enforced by the [`subtle`] crate, which uses
+//! `read_volatile` barriers to prevent the compiler from optimising branchless
+//! code back into branches.
+//!
 //! # Performance Trade-offs
 //!
 //! Constant-time operations are typically 1.5-3x slower than variable-time
@@ -35,6 +39,7 @@
 //! ```
 
 use crate::modn::ModN;
+use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 /// Extension trait providing constant-time operations for ModN
 pub trait ConstantTimeOps<const N: i64>: Sized {
@@ -67,27 +72,17 @@ pub trait ConstantTimeOps<const N: i64>: Sized {
     fn ct_lt(self, other: Self) -> u8;
 }
 
-/// Opaque mask barrier: prevents the compiler from observing that `mask` is
-/// always 0 or -1, which could let it reintroduce branches.
-///
-/// Uses `core::hint::black_box` to hide the value from the optimiser.
-/// This is weaker than inline asm (which `subtle` uses) but is the best
-/// tool available in stable Rust without an asm dependency.
-#[inline(always)]
-fn ct_mask(mask: i64) -> i64 {
-    core::hint::black_box(mask)
-}
-
 impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
     /// Constant-time addition with branchless reduction
     ///
     /// # Implementation
     ///
-    /// Uses bitwise operations to avoid data-dependent branches:
+    /// Uses `subtle::ConditionallySelectable` for the final selection:
     /// ```text
     /// sum = a + b
-    /// needs_reduction = (sum >= N) ? 0xFF...FF : 0x00...00
-    /// result = (sum - N) & needs_reduction | sum & ~needs_reduction
+    /// reduced = sum - N
+    /// choice = (sum >= N)     // derived from sign of (N - 1 - sum)
+    /// result = select(sum, reduced, choice)
     /// ```
     ///
     /// # Performance
@@ -95,36 +90,26 @@ impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
     /// ~1.5x slower than branching version, but constant-time.
     fn ct_add(self, other: Self) -> Self {
         let sum = self.value() + other.value();
-
-        // Compute reduction mask without branching
-        // If sum >= N, this will be all 1s (-1), otherwise all 0s (0)
-        let needs_reduction = ct_mask(((N - 1 - sum) >> 63) as i64);
-
         let reduced = sum - N;
 
-        // Branchless selection:
-        // If needs_reduction is -1 (all 1s), select reduced
-        // If needs_reduction is 0, select sum
-        let result = (reduced & needs_reduction) | (sum & !needs_reduction);
+        // sum >= N iff (N - 1 - sum) < 0, i.e. sign bit is set
+        // Arithmetic right shift gives -1 (all 1s) if negative, 0 if non-negative
+        // We want Choice(1) when sum >= N, i.e. when (N - 1 - sum) is negative
+        let needs_reduction = Choice::from(((N - 1 - sum) >> 63) as u8 & 1);
 
-        // SAFETY: result is guaranteed to be in [0, N) by construction
-        // - If sum < N: result = sum (which is < N)
-        // - If sum >= N: result = sum - N (which is in [0, N))
+        let result = i64::conditional_select(&sum, &reduced, needs_reduction);
         unsafe { Self::new_unchecked(result) }
     }
 
     /// Constant-time subtraction with branchless underflow handling
     fn ct_sub(self, other: Self) -> Self {
         let diff = self.value() - other.value();
-
-        // Compute underflow mask: -1 if diff < 0, 0 otherwise
-        let needs_adjustment = ct_mask((diff >> 63) as i64);
-
         let adjusted = diff + N;
 
-        // Branchless selection
-        let result = (adjusted & needs_adjustment) | (diff & !needs_adjustment);
+        // diff < 0 iff sign bit is set
+        let needs_adjustment = Choice::from((diff >> 63) as u8 & 1);
 
+        let result = i64::conditional_select(&diff, &adjusted, needs_adjustment);
         unsafe { Self::new_unchecked(result) }
     }
 
@@ -139,15 +124,12 @@ impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
 
     /// Constant-time negation
     fn ct_neg(self) -> Self {
-        let is_zero = ct_is_zero(self.value());
-
-        // If zero, result is 0; otherwise result is N - value
         let negated = N - self.value();
 
-        // Branchless selection
-        let mask = ct_mask(-(is_zero as i64));
-        let result = (self.value() & mask) | (negated & !mask);
+        // If value == 0, result should be 0; otherwise N - value
+        let is_zero = self.value().ct_eq(&0);
 
+        let result = i64::conditional_select(&negated, &0, is_zero);
         unsafe { Self::new_unchecked(result) }
     }
 
@@ -156,8 +138,8 @@ impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
     /// Returns `a` if bit 0 of `choice` is 0, returns `b` if bit 0 is 1.
     /// This operation takes constant time regardless of the choice value.
     fn ct_select(a: Self, b: Self, choice: u8) -> Self {
-        let mask = ct_mask(-((choice & 1) as i64));
-        let result = (a.value() & !mask) | (b.value() & mask);
+        let c = Choice::from(choice & 1);
+        let result = i64::conditional_select(&a.value(), &b.value(), c);
         unsafe { Self::new_unchecked(result) }
     }
 
@@ -165,14 +147,12 @@ impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
     ///
     /// Swaps `a` and `b` if bit 0 of `choice` is 1, using XOR-based swap trick.
     fn ct_swap(a: &mut Self, b: &mut Self, choice: u8) {
-        let mask = ct_mask(-((choice & 1) as i64));
-        let xor = (a.value() ^ b.value()) & mask;
-
-        let new_a = a.value() ^ xor;
-        let new_b = b.value() ^ xor;
-
-        *a = unsafe { Self::new_unchecked(new_a) };
-        *b = unsafe { Self::new_unchecked(new_b) };
+        let c = Choice::from(choice & 1);
+        let mut va = a.value();
+        let mut vb = b.value();
+        i64::conditional_swap(&mut va, &mut vb, c);
+        *a = unsafe { Self::new_unchecked(va) };
+        *b = unsafe { Self::new_unchecked(vb) };
     }
 
     /// Constant-time equality check
@@ -180,32 +160,18 @@ impl<const N: i64> ConstantTimeOps<N> for ModN<N> {
     /// Returns 1 if equal, 0 otherwise (as u8).
     /// Avoids bool to prevent compiler from introducing branches.
     fn ct_eq(self, other: Self) -> u8 {
-        ct_is_zero(self.value() ^ other.value())
+        self.value().ct_eq(&other.value()).unwrap_u8()
     }
 
     /// Constant-time less-than comparison
     fn ct_lt(self, other: Self) -> u8 {
-        // Compute diff = self - other
+        // For values in [0, N) where N < 2^62, (a - b) fits in i64
+        // and the sign bit correctly indicates a < b.
         let diff = self.value() - other.value();
-
-        // If diff < 0, sign bit is 1
-        ((core::hint::black_box(diff) >> 63) & 1) as u8
+        // Use subtle's barrier to prevent the compiler from seeing the sign test
+        let diff = subtle::BlackBox::new(diff).get();
+        ((diff >> 63) & 1) as u8
     }
-}
-
-// Helper functions
-
-/// Constant-time check if value is zero
-/// Returns 1 if zero, 0 otherwise
-#[inline]
-fn ct_is_zero(x: i64) -> u8 {
-    // If x == 0, then x | -x == 0
-    // If x != 0, then x | -x has sign bit set
-    let neg_x = x.wrapping_neg();
-    let result = x | neg_x;
-
-    // Extract inverted sign bit: 1 if zero, 0 if non-zero
-    (1 & ((result >> 63) ^ 1)) as u8
 }
 
 /// Constant-time reduction modulo N using Barrett reduction
@@ -252,23 +218,16 @@ fn ct_reduce<const N: i64>(x: i64) -> ModN<N> {
     let q = (((x as i128) * mu) >> two_k) as i64;
 
     // r = x - q · N
-    let mut r = x - q * N;
-
-    // At this point, r is in the range [0, 2N)
-    // We need at most one conditional subtraction to get r < N
+    let r = x - q * N;
+    let reduced = r - N;
 
     // Constant-time conditional subtraction
-    // Check if r >= N using: (r - N) has sign bit 0 if r >= N, 1 if r < N
-    let diff = r - N;
-    let is_negative = (core::hint::black_box(diff) >> 63) & 1;
-    let needs_reduction = 1 - is_negative;
-    let mask = ct_mask(-(needs_reduction as i64));
+    // If r >= N (i.e., reduced >= 0), use reduced; otherwise use r
+    let needs_reduction = Choice::from(((!(reduced >> 63)) & 1) as u8);
+    let result = i64::conditional_select(&r, &reduced, needs_reduction);
 
-    // If needs_reduction, use diff (r - N); otherwise use r
-    r = (diff & mask) | (r & !mask);
-
-    // r is now guaranteed to be in [0, N)
-    unsafe { ModN::new_unchecked(r) }
+    // result is now guaranteed to be in [0, N)
+    unsafe { ModN::new_unchecked(result) }
 }
 
 // We need to extend ModN with unsafe operations for constant-time code
@@ -280,8 +239,7 @@ impl<const N: i64> ModN<N> {
     /// The caller must ensure that 0 <= value < N
     #[inline(always)]
     pub(crate) unsafe fn new_unchecked(value: i64) -> Self {
-        // SAFETY: ModN is a transparent wrapper around i64
-        // We can directly construct it from a value
+        // SAFETY: ModN has #[repr(transparent)] over i64
         core::mem::transmute(value)
     }
 }
@@ -400,14 +358,6 @@ mod tests {
         assert_eq!(a.ct_lt(b), 1);
         assert_eq!(b.ct_lt(a), 0);
         assert_eq!(a.ct_lt(a), 0);
-    }
-
-    #[test]
-    fn test_ct_is_zero() {
-        assert_eq!(ct_is_zero(0), 1);
-        assert_eq!(ct_is_zero(1), 0);
-        assert_eq!(ct_is_zero(-1), 0);
-        assert_eq!(ct_is_zero(12345), 0);
     }
 
     // Comprehensive correctness test against variable-time operations
