@@ -26,6 +26,7 @@ libm = { version = "0.2", optional = true }
 [dev-dependencies]
 criterion = "0.7"
 sha3 = { version = "0.10", features = ["asm"] }
+aes-gcm = "0.10"
 
 [features]
 default = ["std"]
@@ -58,6 +59,11 @@ path = "examples/bench_no_std.rs"
 [[example]]
 name = "wasm_usage"
 path = "examples/wasm_usage.rs"
+required-features = ["std"]
+
+[[example]]
+name = "hybrid_pq_aes"
+path = "examples/hybrid_pq_aes.rs"
 required-features = ["std"]
 
 [[example]]

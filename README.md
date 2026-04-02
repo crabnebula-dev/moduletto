@@ -32,6 +32,18 @@ A standalone Kyber-512 KEM implementation featuring:
 - **SHA3-256/512, SHAKE-128/256** -- Complete hash suite for Kyber key derivation and sampling
 - **Full KEM flow** -- keygen, encapsulation, decapsulation with implicit rejection (FO transform)
 
+### Hybrid Post-Quantum Encryption (`examples/hybrid_pq_aes.rs`)
+
+A complete Kyber-512 + AES-256-GCM hybrid encryption system demonstrating the standard post-quantum key encapsulation pattern used in TLS 1.3 and Signal's PQXDH:
+
+```bash
+cargo run --release --example hybrid_pq_aes
+```
+
+1. Kyber-512 KEM establishes a 256-bit shared secret (768-byte ciphertext)
+2. AES-256-GCM encrypts arbitrary plaintext with the shared secret
+3. Tamper detection via GCM authentication tag + Kyber IND-CCA2 implicit rejection
+
 ## Usage
 
 ```rust
