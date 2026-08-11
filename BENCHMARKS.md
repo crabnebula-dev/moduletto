@@ -1,21 +1,236 @@
 # moduletto vs LibOQS vs Kyber C Reference
-## Criterion Benchmark Results
+## Benchmark Results
 
-**Benchmark date**: 2026-03-19
-**Platform**: macOS Darwin 25.0.0, Apple Silicon (ARM64)
-**Modulus**: q = 3329 (Kyber-512 / ML-KEM-512)
-**Polynomial degree**: n = 256
+**Benchmark date**: 2026-08-11 (hashing + codec pass), 2026-08-10 (NTT pass)
+**Platform**: macOS Darwin 25.5.0, Apple M5 (Mac17,2)
+**Modulus**: q = 3329 (Kyber-512 / ML-KEM-512), degree n = 256
 
 **Tools / versions**:
-- moduletto: Criterion 0.7, `cargo bench` (release profile) + `kyber_benchmark` example
-- LibOQS: 0.15.0, compiled with `gcc -O3 -march=native`, linked against Homebrew OpenSSL
-- Kyber C Reference: pq-crystals/kyber `ref/` (commit HEAD 2026-03-19), `gcc -O3 -march=native -DKYBER_K=2`
+- moduletto: Criterion 0.7 for primitives; `examples/kyber_benchmark` (10,000 iterations, 100-iteration warmup) for the full KEM
+- LibOQS 0.16.0: built from source at tag `0.16.0`, `cmake -DCMAKE_BUILD_TYPE=Release -DOQS_MINIMAL_BUILD=KEM_ml_kem_512 -DCMAKE_C_FLAGS="-O3 -march=native"`
+- LibOQS 0.15.0: Homebrew bottle, same harness
+- Kyber C Reference: pq-crystals/kyber `ref/`, `gcc -O3 -march=native -DKYBER_K=2` — **carried over from 2026-03-19, not re-measured**
 
-All three benchmarks were run on the same machine in the same session. 10,000 iterations with 100-iteration warmup throughout. Criterion's own sampling (100 samples) for moduletto scalar/NTT primitive ops. The `kyber_benchmark` example uses 10,000 iterations for the full KEM.
+Both LibOQS versions were re-measured on this machine in the same session as the
+moduletto figures, through an identical harness (10,000 iterations, best of 5
+repeats, keygen + encaps + decaps, shared-secret agreement asserted).
+
+---
+
+## Full ML-KEM-512 session
+
+| Phase | moduletto NEON i16 | LibOQS 0.16.0 | LibOQS 0.15.0 | Kyber C Ref |
+|-------|:------------------:|:-------------:|:-------------:|:-----------:|
+| Key generation | **4.07 µs** | 4.72 µs | 5.80 µs | 14.93 µs |
+| Encapsulation | **3.84 µs** | 5.25 µs | 6.60 µs | 14.57 µs |
+| Decapsulation | **5.80 µs** | 6.22 µs | 8.03 µs | 18.37 µs |
+| **Total / session** | **13.7–14.1 µs** | 16.19 µs | 20.43 µs | 47.87 µs |
+| Sessions / sec | **~72,000** | 61,800 | 48,900 | 20,900 |
+| vs LibOQS 0.16.0 | **0.85×** | baseline | 1.26× | 2.96× |
+
+Both implementations pass the same NIST ACVP ML-KEM-512 vectors, so this is a
+like-for-like comparison of the same algorithm.
+
+**LibOQS 0.16.0 (released 2026-07-09) is itself 1.26× faster than 0.15.0.**
+Earlier revisions of this document compared against 0.15.0 at 22.44 µs;
+re-measuring 0.15.0 here gives 20.43 µs, so that figure was also pessimistic.
+Both corrections cut against us.
+
+moduletto's other two backends, for reference:
+
+| Backend | Total |
+|---------|------:|
+| sha3 crate + asm + i64 NTT | 34.6 µs |
+| inline Keccak + i64 NTT | 36.6 µs |
+
+---
+
+## Conformance: FIPS 203 known-answer tests
+
+`examples/kyber_benchmark.rs` runs the official NIST ACVP ML-KEM-512 vectors on
+every invocation — 25 keyGen (AFT), 25 encapsulation (AFT), 10 decapsulation
+(VAL, including modified-ciphertext cases that must return the implicit-rejection
+key). Vectors live in `tests/kat/ml_kem_512_fips203.txt`, extracted verbatim from
+[usnistgov/ACVP-Server](https://github.com/usnistgov/ACVP-Server).
+
+Introducing them found that the implementation was **not ML-KEM**. The previous
+self-check — encapsulate, decapsulate, confirm the shared secrets match — is
+satisfied by any internally coherent scheme, so it had never been in a position
+to notice:
+
+| Deviation | Was | FIPS 203 |
+|-----------|-----|----------|
+| KeyGen domain separation | `G(d)` | `G(d ‖ k)` |
+| Encaps hash input | `G(H(m) ‖ H(ek))` | `G(m ‖ H(ek))` |
+| Shared secret | `KDF(K ‖ H(c))` (round-3) | `K` |
+| Implicit rejection | `SHA3-256(z ‖ H(c))` | `J(z ‖ c)` = `SHAKE256(z ‖ c, 32)` |
+| Rejection seed `z` | **hardcoded to zero** | random, stored in `dk` |
+| Noise parameter | η₁ = 2 | η₁ = 3 (η₂ = 2) |
+
+The zeroed `z` is the one that is a security bug rather than a conformance nit:
+implicit rejection is supposed to return a key the attacker cannot predict, and
+a constant `z` makes it computable by anyone holding the ciphertext.
+
+Fixing all six made the KEM **faster**, 16.2 → 13.9 µs. Round-3's final KDF hashes
+the entire 768-byte ciphertext with SHA3-256 — six Keccak permutations per
+encapsulation, and again during decapsulation's re-encryption — and FIPS 203 does
+not have it. That saving outweighs the wider η₁ = 3 noise sampling (192 bytes per
+polynomial instead of 128, so two SHAKE-256 blocks instead of one).
+
+---
+
+## History: where the time went
+
+| Date | Total | What changed |
+|------|------:|--------------|
+| 2026-03-19 | 45.8 µs | NEON i16 NTT added (len ≥ 8 layers only) |
+| 2026-08-10 | 43.6 µs | NTT pass: lazy reduction, all NTT layers vectorised |
+| 2026-08-11 | 27.7 µs | Bit-packing codecs replaced with grouped packing |
+| 2026-08-11 | 16.1 µs | Two-lane SHA3 Keccak + right-sized SHAKE squeezing |
+| 2026-08-11 | **13.9 µs** | FIPS 203 conformance (net saving: round-3 KDF removed) |
+
+### 1. The NTT pass (2026-08-10)
+
+Criterion, before → after, same machine and session:
+
+| Benchmark | Before | After | Speedup |
+|-----------|-------:|------:|--------:|
+| `ntt/forward_ntt` | 579 ns | **176 ns** | 3.3× |
+| `ntt/inverse_ntt` | 787 ns | **239 ns** | 3.3× |
+| `ntt/mul_ntt` | 2288 ns | **503 ns** | 4.5× |
+| `ntt/mul_schoolbook` | 27.3 µs | **8.8 µs** | 3.1× |
+| `ntt/poly_sub` | 74.1 ns | 63 ns | 1.2× |
+| `ntt_ct/ct_forward_ntt` | 2810 ns | **177 ns** | 15.9× |
+| `ntt_ct/ct_inverse_ntt` | 3014 ns | **239 ns** | 12.6× |
+| `ntt_ct/ct_mul_ntt` | 11338 ns | **504 ns** | 22.5× |
+| `ntt_ct/ct_poly_add` | 244.6 ns | **63 ns** | 3.9× |
+| `ntt_ct/ct_poly_sub` | 178.5 ns | **63 ns** | 2.8× |
+
+- **`subtle` built with `core_hint_black_box`** (one line in `Cargo.toml`). The
+  default barrier is `read_volatile`, which forces a stack round-trip on every
+  `Choice` and blocks vectorisation; `core::hint::black_box` is a register
+  fence. 30–44% on every constant-time path on its own.
+- **Lazy reduction.** With q = 3329 in a 64-bit register there are ~50 spare
+  bits, so coefficients stay in a redundant centred representation through all
+  seven layers and are canonicalised once at the end. Only multiplies are
+  reduced, by a branchless rounding Barrett step — proved correct in
+  `proofs/BarrettReduction.v` (`fq_reduce_bound`, `fq_reduce_kyber`).
+- **Constant-time became branchless rather than barrier-guarded.** The old
+  `ct_ntt` paid a `subtle` barrier per operation — three per butterfly, 2688 per
+  transform — to stop the compiler folding a `select` into a branch. The lazy
+  kernel contains no `select`, so the barriers protected nothing while costing
+  ~4×. The `ct_*` transforms are now the same code as their variable-time
+  counterparts. The per-scalar `modn_ct` primitives are unchanged.
+- **All seven NTT layers vectorised.** AArch64 has no 64-bit SIMD multiply, so
+  an i64 NTT can never vectorise its multiplies; the library narrows to i16 and
+  runs eight Montgomery butterflies per instruction. Critically the two
+  narrowest layers (len = 4, len = 2) must be vectorised too — left scalar, as
+  in the original prototype, they cost ~250 ns of a ~300 ns transform while the
+  five wide layers together take only ~53 ns. They need `uzp`/`zip`
+  deinterleaving because both halves of a butterfly share a vector.
+- Compile-time twiddle tables (was `OnceLock`), lazy accumulation in
+  `mul_schoolbook`, branchless polynomial add/sub.
+
+### 2. Bit-packing codecs (2026-08-11): 43.6 → 27.7 µs
+
+Profiling one encapsulation showed `poly_compress_i16(d=10)` at **3627 ns** —
+more than the four SHAKE-128 matrix streams put together, and encapsulation runs
+two of them. The cause was packing d-bit values one bit at a time:
+
+```rust
+out[bit_pos / 8] |= bit << (bit_pos % 8);
+```
+
+2560 iterations for one polynomial, each a read-modify-write of the same output
+byte, so the whole loop is one serial store→load dependency chain. Replacing it
+with the reference's grouped packing (4 coefficients into 5 bytes for d = 10, 2
+into 1 for d = 4) took it to **103 ns — a 35× improvement on that function**:
+
+| Codec | Before | After |
+|-------|-------:|------:|
+| `poly_compress_i16` (d=10) | 3627 ns | **103 ns** |
+| `poly_compress_i16` (d=4) | 335 ns | **51 ns** |
+| `poly_decompress_i16` (d=10) | 792 ns | **41 ns** |
+| `poly_decompress_i16` (d=4) | 222 ns | **21 ns** |
+
+The bit-at-a-time versions are retained as `*_generic` and serve as the oracle
+the fast paths are checked against.
+
+### 3. Hashing (2026-08-11): 27.7 → 16.1 µs
+
+After the codec fix, hashing was ~65% of the session. Two problems, both worth
+more than the earlier note about "hashing overhead" suggested:
+
+**The SHA3 instructions were half idle.** ARMv8.2 FEAT_SHA3 (EOR3, RAX1, XAR,
+BCAX) operates on 128-bit vectors, which hold *two* 64-bit Keccak lanes. The
+`keccak` crate's asm path — what `sha3 = { features = ["asm"] }` selects — drives
+a single state through them and leaves the upper half of every register unused.
+That is why the 2026-03-19 session concluded "SHA3 hardware gives no measurable
+advantage": it was buying a 2× and immediately throwing it away.
+
+| Keccak-f1600 implementation | ns / permutation |
+|-----------------------------|-----------------:|
+| inline XKCP (this example, scalar) | 129.3 |
+| `sha3` crate, `asm` feature | 118.4 |
+| **two lanes, FEAT_SHA3 intrinsics** | **56.5** |
+
+Kyber has ample independent streams to pair: the k² = 4 matrix polynomials and
+the k noise polynomials each come from a separate SHAKE invocation.
+
+**The matrix sampler over-squeezed.** `gen_poly_uniform_i16` always squeezed a
+fixed 1024-byte buffer — 7 permutations — where rejection sampling needs ~3.3 on
+average. It also read out of bounds, and panicked, in the (vanishingly unlikely)
+case that 1024 bytes were not enough; the streaming replacement has no bound.
+
+Combined effect on one encapsulation:
+
+| | Before | After |
+|--|------:|------:|
+| `gen_matrix_i16` (4 SHAKE-128 streams) | 4645 ns | **1402 ns** |
+| noise sampling (5 × SHAKE-256 + CBD) | 1140 ns | **~590 ns** |
+| Keccak permutations per session | 130 | 34 scalar + paired |
+
+Single-lane use of the SHA3 instructions for the remaining unpairable hashes
+(H(pk), H(ct), G, KDF — each one sequential stream) was tried and measured no
+faster: the per-call state conversion cancels the ~16 ns instruction advantage.
+It was reverted rather than kept as unearned complexity.
+
+### Correctness
+
+- 39 library unit tests, including cross-backend tests checking the NEON int16
+  backend against the portable i64 kernel coefficient-by-coefficient on random
+  full-degree polynomials.
+- **FIPS 203 KATs**: 60 official NIST ACVP ML-KEM-512 vectors, run on every
+  invocation of the example, non-zero exit on any mismatch.
+- The example self-checks on every run: NTT round-trip, `fqmul_vec`, KEM
+  encaps == decaps, **codec equivalence** (grouped vs bit-at-a-time, bit for
+  bit, over 2000 random polynomials in both canonical and centred form), and
+  **sponge conformance** (the streaming sampler and the two-lane sponge against
+  serial single-stream references, over 200 random seeds). The last one matters
+  specifically because encaps == decaps would still pass if the two-lane sponge
+  swapped its lanes — the same blind spot that hid the FIPS 203 deviations above.
+- Fuzzing: 5.8M executions on `fuzz_ntt_roundtrip`, 306K on `fuzz_poly_mul`,
+  50M on `fuzz_barrett`, 58M on `fuzz_ct_arith`. No findings.
+- All four Coq developments compile, with a new section in
+  `proofs/BarrettReduction.v` covering the rounding-Barrett kernel.
+
+### Remaining gap
+
+Decapsulation is the one phase where LibOQS is still clearly ahead (6.22 vs
+7.13 µs). The unpairable long-message hashes — H(pk) over 800 bytes, H(ct) over
+768 bytes, 6 permutations each and inherently sequential — are close to a floor
+for a single stream. LibOQS also batches four Keccak lanes where the ISA allows
+and interleaves four polynomials per NTT call.
 
 ---
 
 ## Full Kyber-512 Session
+
+> **Historical — superseded by the tables above.** These are the 2026-03-19
+> measurements, kept as a record of how the implementation looked then: the NEON
+> i16 NTT vectorised only the len ≥ 8 layers, the codecs packed bit at a time,
+> and Keccak ran single-lane. The LibOQS figures quoted here (22.44 µs) are both
+> an older release and, as re-measurement showed, pessimistic for that release.
 
 End-to-end KEM timing: keygen + encapsulation + decapsulation.
 All figures are **measured end-to-end** on the same machine, including SHAKE-128/256 hashing, SHA3-512/256 key derivation, CBD sampling, and polynomial encoding/compression. Decapsulation includes re-encryption (implicit rejection check).
@@ -73,9 +288,9 @@ they are not directly Criterion-measured and are labelled (est.).
 moduletto figures are Criterion-measured. LibOQS and Kyber C Reference are estimated from published breakdowns for this CPU family.
 
 | Operation | moduletto (VT) | moduletto (CT) | LibOQS (NEON) (est.) | Kyber C Ref (est.) |
-|-----------|:-----------------------------:|:-----------------------------:|:--------------------:|:------------------:|
-| poly_add | **63 ns** (Criterion) / 82 ns (example) | 63 ns | ~180 ns | ~450 ns |
-| poly_sub | **72 ns** (Criterion) / 81 ns (example) | 83 ns | ~190 ns | ~470 ns |
+|-----------|:--------------:|:--------------:|:--------------------:|:------------------:|
+| poly_add | **63 ns** | **63 ns** | ~180 ns | ~450 ns |
+| poly_sub | **63 ns** | **63 ns** | ~190 ns | ~470 ns |
 
 > The example measures ~82 ns vs Criterion's ~63 ns due to benchmark harness differences (warmup, loop structure, black_box placement). Criterion is the more reliable measurement.
 

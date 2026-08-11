@@ -3,7 +3,7 @@ name = "moduletto"
 version = "0.1.0"
 edition = "2021"
 authors = ["Daniel Thompson-Yvetot"]
-license = "Polyform-Noncommercial-1.0.0"
+license = "PolyForm-Noncommercial-1.0.0"
 description = "Optimized modular arithmetic and NTT for lattice cryptography — i64 scalar, i16 NEON, and Kyber KEM"
 keywords = ["modular", "ntt", "kyber", "cryptography", "performance"]
 categories = ["mathematics", "no-std", "cryptography", "embedded"]
@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Constant-time primitives with inline asm barrier (side-channel hardening)
-subtle = { version = "2.6", default-features = false }
+subtle = { version = "2.6", default-features = false, features = ["core_hint_black_box"] }
 
 # Optional WebAssembly support
 wasm-bindgen = { version = "0.2", optional = true }

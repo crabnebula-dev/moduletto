@@ -1,27 +1,87 @@
 # Moduletto Native Smart
 
-Optimized modular arithmetic and NTT for lattice cryptography. Includes a full Kyber-512 (ML-KEM-512) implementation with ARM64 NEON-accelerated int16 NTT in constant time, as WASM, and with optional no_std.
+Optimized rust-based modular arithmetic and NTT for lattice cryptography. Includes a full Kyber-512 (ML-KEM-512) implementation with ARM64 NEON-accelerated int16 NTT in constant time, as WASM, and with optional no_std.
+
+## Conformance
+
+The Kyber-512 implementation in `examples/kyber_benchmark.rs` is validated against
+the **official NIST ACVP known-answer tests for ML-KEM-512 (FIPS 203)** —
+60 cases covering all three operations:
+
+| Operation | Cases | Checks |
+|-----------|------:|--------|
+| `keyGen` (AFT) | 25 | `(d, z)` → encapsulation and decapsulation keys, byte for byte |
+| `encapsulation` (AFT) | 25 | `(ek, m)` → ciphertext and shared secret |
+| `decapsulation` (VAL) | 10 | `(dk, c)` → shared secret, including modified-ciphertext cases that must yield the implicit-rejection key |
+
+Vectors are in [tests/kat/](tests/kat/), extracted verbatim from
+[usnistgov/ACVP-Server](https://github.com/usnistgov/ACVP-Server). The harness runs
+on every `cargo run --release --example kyber_benchmark` and exits non-zero on any
+mismatch.
+
+This matters more than it sounds. The self-consistency check the example previously
+relied on — encapsulate, decapsulate, confirm the shared secrets agree — passes for
+*any* internally coherent scheme. Running the official vectors showed this code was
+implementing round-3 Kyber rather than FIPS 203 ML-KEM, and with a parameter error
+on top:
+
+- `G(d)` instead of `G(d ‖ k)` — FIPS 203's key-generation domain separation
+- encapsulation hashed `m` before use; FIPS 203 feeds it in directly
+- round-3's final `KDF(K ‖ H(c))`; FIPS 203 uses `K` as the shared secret
+- implicit rejection via `SHA3-256(z ‖ H(c))` instead of `J(z ‖ c)`
+- **the implicit-rejection seed `z` was hardcoded to zero**, which is a real
+  weakness rather than a conformance nit: a predictable `z` makes the rejection
+  key computable by anyone
+- η₁ = 2 where ML-KEM-512 requires η₁ = 3
+
+All are fixed, and the KATs now pass. Correcting them also made the KEM *faster*:
+dropping round-3's KDF removes a SHA3-256 over the full 768-byte ciphertext — six
+Keccak permutations — from every encapsulation, which more than pays for the wider
+η₁ = 3 noise sampling.
 
 ## Performance
 
-Full Kyber-512 KEM session on Apple Silicon (M5 Pro):
+Full ML-KEM-512 KEM session (keygen + encaps + decaps) on Apple M5. LibOQS was
+rebuilt and re-measured on the same machine, in the same session, with the same
+10,000-iteration methodology. Both implementations pass the same NIST ACVP vectors:
 
-| Phase | Moduletto NEON i16 | LibOQS 0.15.0 | Kyber C Reference |
-|-------|:--------------------:|:-------------:|:-----------------:|
-| Key generation | 8.42 us | 7.19 us | 14.93 us |
-| Encapsulation | 16.79 us | 6.98 us | 14.57 us |
-| Decapsulation | 20.58 us | 8.27 us | 18.37 us |
-| **Total** | **45.79 us** | **22.44 us** | **47.87 us** |
+| Phase | Moduletto NEON i16 | LibOQS 0.16.0 | LibOQS 0.15.0 | Kyber C Reference |
+|-------|:------------------:|:-------------:|:-------------:|:-----------------:|
+| Key generation | **4.07 us** | 4.72 us | 5.80 us | 14.93 us |
+| Encapsulation | **3.84 us** | 5.25 us | 6.60 us | 14.57 us |
+| Decapsulation | **5.80 us** | 6.22 us | 8.03 us | 18.37 us |
+| **Total** | **13.7–14.1 us** | 16.19 us | 20.43 us | 47.87 us |
+| Sessions/sec | **~72,000** | 61,800 | 48,900 | 20,900 |
 
-moduletto is **faster than the Kyber C Reference** and within 2.04x of LibOQS. The remaining gap is primarily hashing overhead (~29 us/session for ~39 Keccak calls). Polynomial arithmetic alone is within 1.26x of LibOQS.
+moduletto is **~1.18x faster than LibOQS 0.16.0** and ahead in all three phases.
+
+> LibOQS 0.16.0 (released 2026-07-09) is itself 1.26x faster than 0.15.0 at
+> ML-KEM-512, so comparisons against the older release overstate our lead.
+> The Kyber C Reference column is carried over from an earlier session and was
+> not re-measured.
+
+Library primitives (Criterion, q = 3329, n = 256):
+
+| Operation | Variable-time | Constant-time |
+|-----------|--------------:|--------------:|
+| `forward_ntt` | 176 ns | 177 ns |
+| `inverse_ntt` | 239 ns | 239 ns |
+| `mul_ntt` | 503 ns | 504 ns |
+| `poly_add` / `poly_sub` | 63 ns | 63 ns |
+
+The constant-time transforms cost the same as the variable-time ones because
+they *are* the same code: the kernel is branchless straight-line arithmetic with
+no data-dependent branch and no conditional move, so there is nothing a barrier
+would protect. See [BENCHMARKS.md](BENCHMARKS.md) for the full picture and the
+history behind these numbers.
 
 ## What's Inside
 
 ### Core (`src/`)
 
 - **`modn.rs`** -- Generic `ModN<N>` type for modular arithmetic over any modulus < 2^31. Variable-time operations using i64 native register arithmetic (3x faster than i128).
-- **`modn_ct.rs`** -- Constant-time variant of `ModN` with side-channel resistant operations (bitwise masks, no data-dependent branches). Zero overhead at the scalar level.
-- **`ntt.rs`** -- Number Theoretic Transform for `ModN<N>` polynomials (degree 256). Forward/inverse NTT with Cooley-Tukey/Gentleman-Sande butterflies.
+- **`modn_ct.rs`** -- Constant-time variant of `ModN` with side-channel resistant operations, backed by `subtle` optimisation barriers (built with `core_hint_black_box`, so the barrier is a register fence rather than a stack round-trip).
+- **`ntt.rs`** -- Number Theoretic Transform for `ModN<N>` polynomials (degree 256). Cooley-Tukey/Gentleman-Sande butterflies over a lazy, redundant coefficient representation, with a fully vectorised ARM64 NEON int16 backend and a portable i64 fallback. Both backends are cross-checked against each other in the test suite.
 - **`wasm.rs`** -- Optional WebAssembly bindings via `wasm-bindgen`.
 
 ### Kyber Benchmark (`examples/kyber_benchmark.rs`)

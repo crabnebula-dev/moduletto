@@ -1,36 +1,44 @@
-//! # Moduletto (MAJOR DISCOVERY!)
+//! # Moduletto
 //!
-//! **RESEARCH FINDING**: i64 is 3x faster than i128 for small moduli!
+//! Optimised modular arithmetic and NTT for lattice cryptography: a
+//! compile-time-fixed-modulus scalar type, a formally verified constant-time
+//! layer, and a Kyber-parameter NTT with an ARM64 NEON backend.
 //!
-//! ## Benchmark Results (ARM M3 Max)
+//! ## Benchmark results (Apple M5, Criterion, q = 3329, n = 256)
 //!
-//! | Implementation | Poly Add (ns) | vs i128 | vs Scalar |
-//! |---------------|---------------|---------|-----------|
-//! | **i64 scalar** | **93.99** ✨ | **3.1x faster!** | baseline |
-//! | i64 SIMD | 206.98 ⚠️ | 1.4x faster | 2.2x slower |
-//! | i128 scalar | 293 | baseline | - |
-//! | i128 SIMD | 997 | 0.29x | 3.4x slower |
+//! | Operation | Time | vs. previous release |
+//! |---|---:|---:|
+//! | `forward_ntt` | 176 ns | 3.3x faster |
+//! | `inverse_ntt` | 239 ns | 3.3x faster |
+//! | `mul_ntt` | 503 ns | 4.5x faster |
+//! | `ct_forward_ntt` | 177 ns | 15.9x faster |
+//! | `ct_inverse_ntt` | 239 ns | 12.6x faster |
+//! | `ct_mul_ntt` | 504 ns | 22.5x faster |
+//! | `poly_add` / `poly_sub` | 63 ns | unchanged (L1-bandwidth bound) |
+//! | `ct_poly_add` / `ct_poly_sub` | 63 ns | 3.9x / 2.8x faster |
 //!
-//! ## Key Discoveries
+//! ## Design notes
 //!
-//! 1. **i64 is 3x faster than i128 for scalar operations**
-//!    - i64 is ARM64's native register size
-//!    - i128 requires multiple instructions per operation
-//!    - For small moduli (< 2^31), i64 is optimal!
+//! 1. **i64 beats i128 for small moduli.** i64 is ARM64's native register
+//!    width; i128 costs several instructions per operation. For any modulus
+//!    below 2^31 — Kyber, Dilithium — i64 is the right scalar carrier.
 //!
-//! 2. **SIMD still doesn't help (even with true NEON intrinsics)**
-//!    - Load/store overhead dominates
-//!    - Modular reduction (`if sum >= N`) is still scalar
-//!    - Array chunking adds overhead
+//! 2. **Lazy reduction, not canonical reduction.** With q = 3329 in a 64-bit
+//!    register there are ~50 spare bits, so the NTT keeps coefficients in a
+//!    redundant centred representation and canonicalises once at the end.
+//!    Only multiplies are reduced, via a branchless rounding Barrett step
+//!    (proved correct in `proofs/BarrettReduction.v`).
 //!
-//! 3. **For Kyber (modulus 3329), use i64 scalar!**
-//!    - Polynomial add: 94 ns (vs 295 ns for i128)
-//!    - Polynomial sub: 111 ns (vs 370 ns for i128)
-//!    - **This is the fastest Moduletto implementation for small moduli!**
+//! 3. **SIMD helps once the element type is narrow enough.** AArch64 has no
+//!    64-bit SIMD multiply, so an i64 NTT can never vectorise its multiplies.
+//!    Narrowing to i16 lets NEON do eight Montgomery butterflies per
+//!    instruction; see [`ntt`]. The two narrowest layers need `uzp`/`zip`
+//!    deinterleaving — left scalar they cost more than the other five layers
+//!    combined.
 //!
-//! ## Recommendation
-//!
-//! **Use this crate (i64 scalar) for moduli < 2^31** (including Kyber-512, Dilithium, etc.)
+//! 4. **Constant-time need not mean slow.** The branchless kernel has no
+//!    data-dependent branch and no conditional move, so the `ct_*` transforms
+//!    are the same code as the variable-time ones and run at the same speed.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(incomplete_features)]

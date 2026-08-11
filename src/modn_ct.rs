@@ -11,15 +11,20 @@
 //! - Have constant memory access patterns
 //! - Do not leak secrets through timing side channels
 //!
-//! Side-channel resistance is enforced by the [`subtle`] crate, which uses
-//! `read_volatile` barriers to prevent the compiler from optimising branchless
-//! code back into branches.
+//! Side-channel resistance is enforced by the [`subtle`] crate, which places an
+//! optimisation barrier on every `Choice` so the compiler cannot fold branchless
+//! code back into a branch. The crate is built with its `core_hint_black_box`
+//! feature, which implements that barrier as `core::hint::black_box` — an empty
+//! inline-asm fence that keeps the value in a register — rather than the default
+//! `read_volatile`, which forces a stack round-trip and blocks vectorisation.
 //!
 //! # Performance Trade-offs
 //!
-//! Constant-time operations are typically 1.5-3x slower than variable-time
-//! operations due to the elimination of optimizations. Use them only for
-//! operations on secret data.
+//! These per-operation primitives cost roughly 1.3-1.5x their variable-time
+//! counterparts. Note that the polynomial-level constant-time routines in
+//! [`crate::ntt`] no longer build on them: a whole NTT expressed as branchless
+//! straight-line arithmetic has no `select` to protect, so it needs no barriers
+//! and runs at variable-time speed. See [`crate::ntt::NTTPoly::ct_ntt`].
 //!
 //! # Example
 //!
@@ -207,18 +212,32 @@ fn ct_reduce<const N: i64>(x: i64) -> ModN<N> {
         64 - (N - 1).leading_zeros()
     };
 
-    // Compute μ = ⌊2^(2k) / N⌋
-    // For Kyber (k=12), this is (1 << 24) / 3329 = 5041
-    let two_k = (k * 2) as u32;
-    let mu = (1_i128 << two_k) / (N as i128);
+    // Barrett reduction: q ≈ x / N, computed as q = ⌊(x · μ) / 2^(2k)⌋ with
+    // μ = ⌊2^(2k) / N⌋. Both `k` and `μ` fold to compile-time constants because
+    // N is a const generic parameter.
+    //
+    // Width selection (also compile-time constant):
+    //
+    //   x < N² (guaranteed by the only caller, `ct_mul`, whose operands are
+    //   canonical), and μ ≤ 2^(2k)/N, so the intermediate product satisfies
+    //
+    //       x·μ < N² · 2^(2k)/N = N · 2^(2k) ≤ 2^k · 2^(2k) = 2^(3k)
+    //
+    //   so the product fits in a signed 64-bit register whenever 3k ≤ 62,
+    //   i.e. N ≤ 2^20. That covers every lattice-crypto modulus of interest
+    //   (Kyber q=3329, Dilithium q=8380417 needs the wide path). Small moduli
+    //   take a single 64-bit multiply instead of a 128-bit one.
+    let two_k = k * 2;
+    let r = if 3 * k <= 62 {
+        let mu = ((1_i64 << two_k) / N) as i64;
+        let q = (x.wrapping_mul(mu)) >> two_k;
+        x - q * N
+    } else {
+        let mu = (1_i128 << two_k) / (N as i128);
+        let q = (((x as i128) * mu) >> two_k) as i64;
+        x - q * N
+    };
 
-    // Barrett reduction
-    // q ≈ x / N, computed as q = ⌊(x · μ) / 2^(2k)⌋
-    // Use i128 to avoid overflow when N is large (up to 2^31)
-    let q = (((x as i128) * mu) >> two_k) as i64;
-
-    // r = x - q · N
-    let r = x - q * N;
     let reduced = r - N;
 
     // Constant-time conditional subtraction

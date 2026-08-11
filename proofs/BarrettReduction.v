@@ -8,12 +8,25 @@
     The Rust implementation in src/modn_ct.rs:
 <<
     let k = 64 - (N - 1).leading_zeros();
-    let two_k = (k * 2) as u32;
-    let mu = (1_i128 << two_k) / (N as i128);
-    let q = (((x as i128) * mu) >> two_k) as i64;
-    let mut r = x - q * N;
+    let two_k = k * 2;
+    let r = if 3 * k <= 62 {
+        // x*mu < 2^(3k) here, so a 64-bit multiply suffices
+        let mu = (1_i64 << two_k) / N;
+        let q = (x.wrapping_mul(mu)) >> two_k;
+        x - q * N
+    } else {
+        let mu = (1_i128 << two_k) / (N as i128);
+        let q = (((x as i128) * mu) >> two_k) as i64;
+        x - q * N
+    };
     // constant-time conditional subtraction if r >= N
 >>
+
+    The two branches compute the same mathematical value — the width is chosen
+    at compile time from N, and the model below is width-agnostic, so the
+    proofs cover both. *)
+(** *)
+(**
 *)
 
 From Stdlib Require Import ZArith.
@@ -216,3 +229,115 @@ Proof.
   change 24 with (2 * 12).
   apply barrett_reduce_correct; try lia.
 Qed.
+
+(** * Rounding Barrett reduction (the NTT kernel)
+
+    The NTT in src/ntt.rs does not use the floor-Barrett reduction above.
+    Reducing to the canonical range [0, N) after every operation costs a
+    conditional fixup, and with q = 3329 in a 64-bit register there are ~50
+    spare bits, so the kernel instead uses a *rounding* Barrett that returns a
+    centred representative and never corrects:
+
+<<
+    const LAZY_S: u32 = 32;
+    const LAZY_MU: i64 = (1_i64 << LAZY_S) / KYBER_Q;
+
+    fn fq_reduce(x: i64) -> i64 {
+        let quot = (x.wrapping_mul(LAZY_MU) + (1_i64 << (LAZY_S - 1))) >> LAZY_S;
+        x - quot * KYBER_Q
+    }
+>>
+
+    This section proves the two properties the kernel relies on: the result is
+    congruent to the input, and it is bounded by N in absolute value. The
+    absence of a conditional correction is what makes the operation branchless,
+    hence constant-time, and hence vectorisable. *)
+
+Definition fq_reduce (x N mu h M : Z) : Z :=
+  let quot := (x * mu + h) / M in
+  x - quot * N.
+
+(** ** Congruence: the reduction preserves the residue class.
+
+    Immediate — the reduction only ever subtracts a multiple of N. *)
+Theorem fq_reduce_congruent :
+  forall x N mu h M,
+    N <> 0 ->
+    (fq_reduce x N mu h M) mod N = x mod N.
+Proof.
+  intros x N mu h M HN. unfold fq_reduce.
+  rewrite Zminus_mod, Z_mod_mult, Z.sub_0_r, Zmod_mod. reflexivity.
+Qed.
+
+(** ** Bound: the result lies strictly inside (-N, N).
+
+    Let M = 2^S, h = M/2 the rounding offset, and d = M - mu*N, so that
+    0 <= d < N because mu = floor(M/N). Writing e = (x*mu + h) mod M gives
+    M*quot = x*mu + h - e, and substituting into r = x - quot*N yields
+
+      r * M = x*d + N*(e - h).
+
+    From |x| < h and 0 <= d <= N-1 we get |x*d| < N*h; from 0 <= e < M = 2h we
+    get |N*(e - h)| <= N*h. Hence |r*M| < 2*N*h = N*M, so |r| < N. *)
+Theorem fq_reduce_bound :
+  forall x N mu h M,
+    0 < N ->
+    0 < h ->
+    2 * h = M ->
+    mu = M / N ->
+    - h < x < h ->
+    - N < fq_reduce x N mu h M < N.
+Proof.
+  intros x N mu h M HN Hh HM Hmu Hx.
+  assert (HM0 : 0 < M) by lia.
+
+  set (num := x * mu + h).
+  set (quot := num / M).
+  set (e := num mod M).
+
+  assert (He : 0 <= e < M) by (unfold e; apply Z.mod_pos_bound; lia).
+  assert (Hdec : num = M * quot + e) by (unfold quot, e; apply Z.div_mod; lia).
+  assert (Hmq : M * quot = x * mu + h - e) by (unfold num in Hdec; lia).
+
+  (* d = M - mu*N lies in [0, N) because mu = floor(M/N). *)
+  assert (Hd : 0 <= M - mu * N < N).
+  { subst mu. split.
+    - assert (N * (M / N) <= M) by (apply Z.mul_div_le; lia). nia.
+    - assert (Hgt := Z.mul_succ_div_gt M N HN).
+      rewrite Z.mul_succ_r in Hgt. nia. }
+
+  (* The reduction unfolds to x - quot*N. *)
+  assert (Hunfold : fq_reduce x N mu h M = x - quot * N) by reflexivity.
+  rewrite Hunfold.
+
+  (* Key identity: (x - quot*N) * M = x*(M - mu*N) + N*(e - h). *)
+  assert (Hkey : (x - quot * N) * M = x * (M - mu * N) + N * (e - h)).
+  { ring_simplify. nia. }
+
+  (* Bound the two right-hand terms separately. *)
+  assert (Hxd : - (N * h) < x * (M - mu * N) < N * h) by nia.
+  assert (Hen : - (N * h) <= N * (e - h) <= N * h) by nia.
+
+  (* Hence |(x - quot*N) * M| < N*M, and M > 0 gives the result. *)
+  nia.
+Qed.
+
+(** ** Kyber instantiation used by the kernel: N = 3329, S = 32.
+
+    LAZY_MU = 2^32 / 3329 = 1290167, the rounding offset is h = 2^31, and the
+    admissible input range is |x| < 2^31. The growth analysis in src/ntt.rs
+    shows the widest multiply input reaching 784_677_195 in the inverse
+    transform, comfortably inside that range. *)
+Theorem fq_reduce_kyber :
+  forall x,
+    - (2 ^ 31) < x < 2 ^ 31 ->
+    - 3329 < fq_reduce x 3329 (2 ^ 32 / 3329) (2 ^ 31) (2 ^ 32) < 3329.
+Proof.
+  intros x Hx.
+  apply (fq_reduce_bound x 3329 (2 ^ 32 / 3329) (2 ^ 31) (2 ^ 32));
+    try reflexivity; try lia.
+Qed.
+
+(** ** The reciprocal really is 1290167, matching LAZY_MU in the Rust source. *)
+Theorem lazy_mu_value : 2 ^ 32 / 3329 = 1290167.
+Proof. reflexivity. Qed.
