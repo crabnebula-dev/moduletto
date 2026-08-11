@@ -19,6 +19,17 @@ Vectors are in [tests/kat/](tests/kat/), extracted verbatim from
 on every `cargo run --release --example kyber_benchmark` and exits non-zero on any
 mismatch.
 
+**All three backends are validated** — 180 cases per run — through a shared
+byte-level interface, so the NEON int16 path and both i64 paths are held to the
+same standard rather than only the one that gets benchmarked:
+
+```
+FIPS 203 KATs (NIST ACVP ML-KEM-512), all backends:
+    NEON i16 NTT + inline Keccak: PASSED (25 keygen, 25 encaps, 10 decaps)
+    i64 NTT + inline Keccak:      PASSED (25 keygen, 25 encaps, 10 decaps)
+    i64 NTT + sha3 crate (asm):   PASSED (25 keygen, 25 encaps, 10 decaps)
+```
+
 This matters more than it sounds. The self-consistency check the example previously
 relied on — encapsulate, decapsulate, confirm the shared secrets agree — passes for
 *any* internally coherent scheme. Running the official vectors showed this code was

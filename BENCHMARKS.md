@@ -40,8 +40,8 @@ moduletto's other two backends, for reference:
 
 | Backend | Total |
 |---------|------:|
-| sha3 crate + asm + i64 NTT | 34.6 µs |
-| inline Keccak + i64 NTT | 36.6 µs |
+| sha3 crate + asm + i64 NTT | 34.7 µs |
+| inline Keccak + i64 NTT | 36.8 µs |
 
 ---
 
@@ -52,6 +52,17 @@ every invocation — 25 keyGen (AFT), 25 encapsulation (AFT), 10 decapsulation
 (VAL, including modified-ciphertext cases that must return the implicit-rejection
 key). Vectors live in `tests/kat/ml_kem_512_fips203.txt`, extracted verbatim from
 [usnistgov/ACVP-Server](https://github.com/usnistgov/ACVP-Server).
+
+All three backends run them, via a byte-level `MlKem512Backend` trait — 180 cases
+per invocation. The backends keep different internal representations (int16 vs
+int64 coefficients, three hashing paths); the vectors constrain only the FIPS 203
+byte encodings, which is where they meet:
+
+| Backend | keyGen | encaps | decaps |
+|---------|:------:|:------:|:------:|
+| NEON i16 NTT + inline Keccak | 25/25 | 25/25 | 10/10 |
+| i64 NTT + inline Keccak | 25/25 | 25/25 | 10/10 |
+| i64 NTT + sha3 crate (asm) | 25/25 | 25/25 | 10/10 |
 
 Introducing them found that the implementation was **not ML-KEM**. The previous
 self-check — encapsulate, decapsulate, confirm the shared secrets match — is
@@ -200,8 +211,9 @@ It was reverted rather than kept as unearned complexity.
 - 39 library unit tests, including cross-backend tests checking the NEON int16
   backend against the portable i64 kernel coefficient-by-coefficient on random
   full-degree polynomials.
-- **FIPS 203 KATs**: 60 official NIST ACVP ML-KEM-512 vectors, run on every
-  invocation of the example, non-zero exit on any mismatch.
+- **FIPS 203 KATs**: 60 official NIST ACVP ML-KEM-512 vectors against each of the
+  three backends (180 cases), run on every invocation of the example, non-zero
+  exit on any mismatch.
 - The example self-checks on every run: NTT round-trip, `fqmul_vec`, KEM
   encaps == decaps, **codec equivalence** (grouped vs bit-at-a-time, bit for
   bit, over 2000 random polynomials in both canonical and centred form), and

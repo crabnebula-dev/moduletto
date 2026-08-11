@@ -188,8 +188,11 @@ pub fn poly_mul_ntt(a: &[i32], b: &[i32]) -> Result<Vec<i32>, JsValue> {
 /// Get library version info
 #[wasm_bindgen]
 pub fn version_info() -> String {
-    format!("Moduletto v{} - i64 modular arithmetic (3x faster than i128!)",
-            env!("CARGO_PKG_VERSION"))
+    format!(
+        "Moduletto v{} - i64 modular arithmetic, branchless constant-time NTT \
+         (portable kernel in wasm; NEON int16 on ARM64 native)",
+        env!("CARGO_PKG_VERSION")
+    )
 }
 
 /// Run a performance test with the specified number of iterations

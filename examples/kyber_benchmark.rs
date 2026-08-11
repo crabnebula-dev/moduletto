@@ -694,6 +694,85 @@ struct Ciphertext {
     v_enc: [u8; 128],
 }
 
+// ── FIPS 203 byte encodings, i64 coefficient path ────────────────────────────
+//
+// Mirrors the i16 encodings; the KAT runner drives both through the same
+// byte-level interface.
+
+/// ByteDecode12 into an `NTTPoly`.
+fn poly_from_bytes(bytes: &[u8]) -> NTTPoly {
+    let mut coeffs = [KyberCoeff::zero(); KYBER_N];
+    for i in 0..128 {
+        let b0 = bytes[3 * i] as i64;
+        let b1 = bytes[3 * i + 1] as i64;
+        let b2 = bytes[3 * i + 2] as i64;
+        coeffs[2 * i] = KyberCoeff::new(b0 | ((b1 & 0x0F) << 8));
+        coeffs[2 * i + 1] = KyberCoeff::new((b1 >> 4) | (b2 << 4));
+    }
+    NTTPoly::new(coeffs)
+}
+
+fn ek_to_bytes_i64(pk: &PublicKey) -> [u8; ML_KEM_512_EK_BYTES] {
+    let mut out = [0u8; ML_KEM_512_EK_BYTES];
+    for i in 0..KYBER_K {
+        let mut tmp = [0u8; 384];
+        poly_to_bytes(&pk.t_hat[i], &mut tmp);
+        out[384 * i..384 * (i + 1)].copy_from_slice(&tmp);
+    }
+    out[384 * KYBER_K..].copy_from_slice(&pk.rho);
+    out
+}
+
+fn ek_from_bytes_i64(ek: &[u8]) -> PublicKey {
+    let t_hat: [NTTPoly; KYBER_K] =
+        std::array::from_fn(|i| poly_from_bytes(&ek[384 * i..384 * (i + 1)]));
+    let mut rho = [0u8; 32];
+    rho.copy_from_slice(&ek[384 * KYBER_K..384 * KYBER_K + 32]);
+    let h_pk = sha3_256(&[ek]);
+    PublicKey { t_hat, rho, h_pk }
+}
+
+fn dk_to_bytes_i64(sk: &SecretKey) -> [u8; ML_KEM_512_DK_BYTES] {
+    let mut out = [0u8; ML_KEM_512_DK_BYTES];
+    for i in 0..KYBER_K {
+        let mut tmp = [0u8; 384];
+        poly_to_bytes(&sk.s_hat[i], &mut tmp);
+        out[384 * i..384 * (i + 1)].copy_from_slice(&tmp);
+    }
+    out[768..1568].copy_from_slice(&ek_to_bytes_i64(&sk.pk));
+    out[1568..1600].copy_from_slice(&sk.pk.h_pk);
+    out[1600..1632].copy_from_slice(&sk.z);
+    out
+}
+
+fn dk_from_bytes_i64(dk: &[u8]) -> SecretKey {
+    let s_hat: [NTTPoly; KYBER_K] =
+        std::array::from_fn(|i| poly_from_bytes(&dk[384 * i..384 * (i + 1)]));
+    let pk = ek_from_bytes_i64(&dk[768..1568]);
+    let mut z = [0u8; 32];
+    z.copy_from_slice(&dk[1600..1632]);
+    SecretKey { s_hat, pk, z }
+}
+
+fn ct_to_bytes_i64(ct: &Ciphertext) -> [u8; ML_KEM_512_CT_BYTES] {
+    let mut out = [0u8; ML_KEM_512_CT_BYTES];
+    for i in 0..KYBER_K {
+        out[320 * i..320 * (i + 1)].copy_from_slice(&ct.u_enc[i]);
+    }
+    out[320 * KYBER_K..].copy_from_slice(&ct.v_enc);
+    out
+}
+
+fn ct_from_bytes_i64(c: &[u8]) -> Ciphertext {
+    let mut u_enc = [[0u8; 320]; KYBER_K];
+    for (i, u) in u_enc.iter_mut().enumerate() {
+        u.copy_from_slice(&c[320 * i..320 * (i + 1)]);
+    }
+    let mut v_enc = [0u8; 128];
+    v_enc.copy_from_slice(&c[320 * KYBER_K..]);
+    Ciphertext { u_enc, v_enc }
+}
+
 // ── Key generation ────────────────────────────────────────────────────────────
 
 fn kyber_keygen(d: &[u8; 32], z: &[u8; 32], consts: &NTTConstants) -> SecretKey {
@@ -2026,6 +2105,76 @@ fn measure_ns<F: FnMut()>(iters: usize, mut f: F) -> f64 {
 
 const ML_KEM_512_KATS: &str = include_str!("../tests/kat/ml_kem_512_fips203.txt");
 
+/// Byte-level ML-KEM-512 interface, so one KAT runner can drive every backend.
+///
+/// Each backend keeps its own internal representation (i16 vs i64 coefficients,
+/// different hash wrappers); the vectors only constrain the byte encodings, so
+/// that is where they meet.
+trait MlKem512Backend {
+    const NAME: &'static str;
+    fn keygen(d: &[u8; 32], z: &[u8; 32])
+        -> ([u8; ML_KEM_512_EK_BYTES], [u8; ML_KEM_512_DK_BYTES]);
+    fn encaps(ek: &[u8], m: &[u8; 32]) -> ([u8; ML_KEM_512_CT_BYTES], [u8; 32]);
+    fn decaps(dk: &[u8], c: &[u8]) -> [u8; 32];
+}
+
+/// NEON int16 backend (the benchmarked/recommended path).
+struct BackendNeon;
+impl MlKem512Backend for BackendNeon {
+    const NAME: &'static str = "NEON i16 NTT + inline Keccak";
+    fn keygen(d: &[u8; 32], z: &[u8; 32])
+        -> ([u8; ML_KEM_512_EK_BYTES], [u8; ML_KEM_512_DK_BYTES]) {
+        let sk = kyber_keygen_neon(d, z);
+        (ek_to_bytes(&sk.pk), dk_to_bytes(&sk))
+    }
+    fn encaps(ek: &[u8], m: &[u8; 32]) -> ([u8; ML_KEM_512_CT_BYTES], [u8; 32]) {
+        let (ct, ss) = kyber_encaps_neon(&ek_from_bytes(ek), m);
+        (ct_to_bytes(&ct), ss)
+    }
+    fn decaps(dk: &[u8], c: &[u8]) -> [u8; 32] {
+        kyber_decaps_neon(&dk_from_bytes(dk), &ct_from_bytes(c))
+    }
+}
+
+/// Compile-time NTT tables for the i64 backends.
+static I64_CONSTS: NTTConstants = NTTConstants::new();
+
+/// i64 NTT with the inline pure-Rust Keccak.
+struct BackendI64Inline;
+impl MlKem512Backend for BackendI64Inline {
+    const NAME: &'static str = "i64 NTT + inline Keccak";
+    fn keygen(d: &[u8; 32], z: &[u8; 32])
+        -> ([u8; ML_KEM_512_EK_BYTES], [u8; ML_KEM_512_DK_BYTES]) {
+        let sk = kyber_keygen(d, z, &I64_CONSTS);
+        (ek_to_bytes_i64(&sk.pk), dk_to_bytes_i64(&sk))
+    }
+    fn encaps(ek: &[u8], m: &[u8; 32]) -> ([u8; ML_KEM_512_CT_BYTES], [u8; 32]) {
+        let (ct, ss) = kyber_encaps_inner(&ek_from_bytes_i64(ek), m, &I64_CONSTS);
+        (ct_to_bytes_i64(&ct), ss)
+    }
+    fn decaps(dk: &[u8], c: &[u8]) -> [u8; 32] {
+        kyber_decaps(&dk_from_bytes_i64(dk), &ct_from_bytes_i64(c), &I64_CONSTS)
+    }
+}
+
+/// i64 NTT with the `sha3` crate's ARM64 SHA3 asm backend.
+struct BackendI64Sha3Hw;
+impl MlKem512Backend for BackendI64Sha3Hw {
+    const NAME: &'static str = "i64 NTT + sha3 crate (asm)";
+    fn keygen(d: &[u8; 32], z: &[u8; 32])
+        -> ([u8; ML_KEM_512_EK_BYTES], [u8; ML_KEM_512_DK_BYTES]) {
+        let sk = kyber_keygen_hw(d, z, &I64_CONSTS);
+        (ek_to_bytes_i64(&sk.pk), dk_to_bytes_i64(&sk))
+    }
+    fn encaps(ek: &[u8], m: &[u8; 32]) -> ([u8; ML_KEM_512_CT_BYTES], [u8; 32]) {
+        let (ct, ss) = kyber_encaps_hw(&ek_from_bytes_i64(ek), m, &I64_CONSTS);
+        (ct_to_bytes_i64(&ct), ss)
+    }
+    fn decaps(dk: &[u8], c: &[u8]) -> [u8; 32] {
+        kyber_decaps_hw(&dk_from_bytes_i64(dk), &ct_from_bytes_i64(c), &I64_CONSTS)
+    }
+}
+
 fn unhex(s: &str) -> Vec<u8> {
     (0..s.len())
         .step_by(2)
@@ -2033,9 +2182,10 @@ fn unhex(s: &str) -> Vec<u8> {
         .collect()
 }
 
-fn run_ml_kem_512_kats() {
+/// Run every vector against one backend. Returns (cases, failure messages).
+fn kat_backend<B: MlKem512Backend>() -> (u32, u32, u32, Vec<String>) {
     let (mut kg, mut en, mut de) = (0u32, 0u32, 0u32);
-    let mut failures: Vec<String> = Vec::new();
+    let mut failures = Vec::new();
 
     for line in ML_KEM_512_KATS.lines() {
         let line = line.trim();
@@ -2046,14 +2196,11 @@ fn run_ml_kem_512_kats() {
         match f[0] {
             // keygen <tcId> <d> <z> <ek> <dk>
             "keygen" => {
-                let (tc, d, z) = (f[1], unhex(f[2]), unhex(f[3]));
+                let tc = f[1];
+                let d: [u8; 32] = unhex(f[2]).try_into().unwrap();
+                let z: [u8; 32] = unhex(f[3]).try_into().unwrap();
                 let (ek_exp, dk_exp) = (unhex(f[4]), unhex(f[5]));
-                let sk = kyber_keygen_neon(
-                    &d.try_into().unwrap(),
-                    &z.clone().try_into().unwrap(),
-                );
-                let ek = ek_to_bytes(&sk.pk);
-                let dk = dk_to_bytes(&sk);
+                let (ek, dk) = B::keygen(&d, &z);
                 if ek.as_slice() != ek_exp.as_slice() {
                     failures.push(format!("keygen tc{tc}: ek mismatch"));
                 } else if dk.as_slice() != dk_exp.as_slice() {
@@ -2063,24 +2210,23 @@ fn run_ml_kem_512_kats() {
             }
             // encaps <tcId> <ek> <m> <c> <k>
             "encaps" => {
-                let (tc, ek, m) = (f[1], unhex(f[2]), unhex(f[3]));
+                let tc = f[1];
+                let ek = unhex(f[2]);
+                let m: [u8; 32] = unhex(f[3]).try_into().unwrap();
                 let (c_exp, k_exp) = (unhex(f[4]), unhex(f[5]));
-                let pk = ek_from_bytes(&ek);
-                let (ct, ss) = kyber_encaps_neon(&pk, &m.try_into().unwrap());
-                if ct_to_bytes(&ct).as_slice() != c_exp.as_slice() {
+                let (c, k) = B::encaps(&ek, &m);
+                if c.as_slice() != c_exp.as_slice() {
                     failures.push(format!("encaps tc{tc}: ciphertext mismatch"));
-                } else if ss.as_slice() != k_exp.as_slice() {
+                } else if k.as_slice() != k_exp.as_slice() {
                     failures.push(format!("encaps tc{tc}: shared secret mismatch"));
                 }
                 en += 1;
             }
             // decaps <tcId> <dk> <c> <k>
             "decaps" => {
-                let (tc, dk, c, k_exp) = (f[1], unhex(f[2]), unhex(f[3]), unhex(f[4]));
-                let sk = dk_from_bytes(&dk);
-                let ct = ct_from_bytes(&c);
-                let ss = kyber_decaps_neon(&sk, &ct);
-                if ss.as_slice() != k_exp.as_slice() {
+                let tc = f[1];
+                let (dk, c, k_exp) = (unhex(f[2]), unhex(f[3]), unhex(f[4]));
+                if B::decaps(&dk, &c).as_slice() != k_exp.as_slice() {
                     failures.push(format!("decaps tc{tc}: shared secret mismatch"));
                 }
                 de += 1;
@@ -2088,21 +2234,34 @@ fn run_ml_kem_512_kats() {
             other => panic!("unrecognised KAT record type: {other}"),
         }
     }
+    (kg, en, de, failures)
+}
 
-    if failures.is_empty() {
-        println!(
-            "  FIPS 203 KATs (NIST ACVP ML-KEM-512): PASSED  \
-             ({kg} keygen, {en} encaps, {de} decaps)"
-        );
-    } else {
-        eprintln!(
-            "  FIPS 203 KATs: FAILED — {} of {} cases",
-            failures.len(),
-            kg + en + de
-        );
-        for m in failures.iter().take(10) {
-            eprintln!("     {m}");
+fn run_ml_kem_512_kats() {
+    let mut any_failed = false;
+    let mut report = |name: &str, r: (u32, u32, u32, Vec<String>)| {
+        let (kg, en, de, failures) = r;
+        if failures.is_empty() {
+            println!("    {name}: PASSED ({kg} keygen, {en} encaps, {de} decaps)");
+        } else {
+            any_failed = true;
+            eprintln!(
+                "    {name}: FAILED — {} of {} cases",
+                failures.len(),
+                kg + en + de
+            );
+            for m in failures.iter().take(5) {
+                eprintln!("       {m}");
+            }
         }
+    };
+
+    println!("  FIPS 203 KATs (NIST ACVP ML-KEM-512), all backends:");
+    report(BackendNeon::NAME, kat_backend::<BackendNeon>());
+    report(BackendI64Inline::NAME, kat_backend::<BackendI64Inline>());
+    report(BackendI64Sha3Hw::NAME, kat_backend::<BackendI64Sha3Hw>());
+
+    if any_failed {
         std::process::exit(1);
     }
 }

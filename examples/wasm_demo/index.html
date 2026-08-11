@@ -235,9 +235,9 @@
             <h1>🔐 Moduletto Native Smart WASM</h1>
             <p class="tagline">High-Performance Modular Arithmetic for Post-Quantum Cryptography</p>
             <div>
-                <span class="badge">⚡ 3x Faster than i128</span>
+                <span class="badge">✅ FIPS 203 Validated</span>
                 <span class="badge">🛡️ Constant-Time</span>
-                <span class="badge">🔢 Kyber-512 Ready</span>
+                <span class="badge">🔢 ML-KEM-512</span>
             </div>
         </header>
 
@@ -270,44 +270,75 @@
 
                 <!-- Performance Comparison -->
                 <div class="demo-section">
-                    <h2>Performance: i64 vs i128</h2>
-                    <p>Moduletto Native Smart uses i64 for 3x better performance on small moduli (< 2³¹)</p>
+                    <h2>Performance</h2>
+                    <p>Criterion measurements on Apple M5, q = 3329, n = 256. These are
+                       <strong>native</strong> figures; the demo above runs the portable i64 kernel
+                       compiled to WebAssembly and will be substantially slower.</p>
                     <table class="performance-table">
                         <thead>
                             <tr>
                                 <th>Operation</th>
-                                <th>i64 (this)</th>
-                                <th>i128</th>
-                                <th>Speedup</th>
+                                <th>Variable-time</th>
+                                <th>Constant-time</th>
+                                <th>Before this work</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr>
-                                <td>Coefficient Addition</td>
-                                <td><strong>2.01 ns</strong></td>
-                                <td>6-7 ns</td>
-                                <td>✨ 3.3x faster</td>
+                                <td>Forward NTT (256 coefficients)</td>
+                                <td><strong>176 ns</strong></td>
+                                <td><strong>177 ns</strong></td>
+                                <td>579 / 2810 ns</td>
                             </tr>
                             <tr>
-                                <td>Coefficient Multiplication</td>
-                                <td><strong>4.87 ns</strong></td>
-                                <td>15-20 ns</td>
-                                <td>✨ 3.7x faster</td>
+                                <td>Inverse NTT</td>
+                                <td><strong>239 ns</strong></td>
+                                <td><strong>239 ns</strong></td>
+                                <td>787 / 3014 ns</td>
                             </tr>
                             <tr>
-                                <td>Polynomial Addition (256)</td>
-                                <td><strong>91.25 ns</strong></td>
-                                <td>~295 ns</td>
-                                <td>✨ 3.2x faster</td>
+                                <td>Polynomial multiply (NTT)</td>
+                                <td><strong>503 ns</strong></td>
+                                <td><strong>504 ns</strong></td>
+                                <td>2288 / 11338 ns</td>
                             </tr>
                             <tr>
-                                <td>Polynomial Subtraction (256)</td>
-                                <td><strong>106.51 ns</strong></td>
-                                <td>~370 ns</td>
-                                <td>✨ 3.5x faster</td>
+                                <td>Polynomial add / subtract</td>
+                                <td><strong>63 ns</strong></td>
+                                <td><strong>63 ns</strong></td>
+                                <td>65 / 245 ns</td>
+                            </tr>
+                            <tr>
+                                <td>Scalar add / multiply</td>
+                                <td><strong>0.39 / 0.55 ns</strong></td>
+                                <td><strong>0.64 / 0.78 ns</strong></td>
+                                <td>&mdash;</td>
                             </tr>
                         </tbody>
                     </table>
+                    <p style="margin-top: 12px;">The constant-time column matches the variable-time
+                       column because they are the same code &mdash; branchless straight-line
+                       arithmetic needs no optimisation barriers.</p>
+
+                    <h3 style="margin-top: 20px;">Full ML-KEM-512 session</h3>
+                    <table class="performance-table">
+                        <thead>
+                            <tr>
+                                <th>Phase</th>
+                                <th>Moduletto (NEON i16)</th>
+                                <th>LibOQS 0.16.0</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Key generation</td><td><strong>4.07 &micro;s</strong></td><td>4.72 &micro;s</td></tr>
+                            <tr><td>Encapsulation</td><td><strong>3.84 &micro;s</strong></td><td>5.25 &micro;s</td></tr>
+                            <tr><td>Decapsulation</td><td><strong>5.80 &micro;s</strong></td><td>6.22 &micro;s</td></tr>
+                            <tr><td><strong>Total</strong></td><td><strong>13.7&ndash;14.1 &micro;s</strong></td><td>16.19 &micro;s</td></tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top: 12px;">LibOQS was rebuilt from source and re-measured on the
+                       same machine in the same session. Both implementations pass the same NIST ACVP
+                       vectors, so this compares like with like.</p>
                 </div>
 
                 <!-- Examples - Single Column Layout -->
@@ -339,27 +370,75 @@
                 <!-- About -->
                 <div class="demo-section">
                     <h2>About Moduletto Native Smart</h2>
+
                     <div class="highlight">
-                        <p><strong>Why i64 is 3x faster than i128:</strong></p>
-                        <ul style="margin-left: 25px; margin-top: 10px; line-height: 1.8;">
-                            <li>Native register size for ARM64 and x86-64</li>
-                            <li>Single-instruction arithmetic operations</li>
-                            <li>No register pairs required</li>
-                            <li>Better branch prediction</li>
-                        </ul>
+                        <p><strong>FIPS 203 conformant.</strong> The ML-KEM-512 implementation is
+                        validated against the official NIST ACVP known-answer vectors &mdash; 25 keyGen,
+                        25 encapsulation and 10 decapsulation cases (including modified-ciphertext
+                        rejection), run against all three backends on every build. Self-consistency
+                        checks cannot establish this: an implementation can encapsulate and decapsulate
+                        in perfect agreement with itself and still not be ML-KEM.</p>
                     </div>
+
+                    <p style="margin-top: 15px;"><strong>What makes it fast:</strong></p>
+                    <ul style="margin-left: 30px; margin-top: 10px; line-height: 1.8;">
+                        <li><strong>Lazy reduction</strong> &mdash; with q = 3329 in a 64-bit register
+                            there are ~50 spare bits, so the NTT keeps coefficients in a redundant
+                            centred form through all seven layers and canonicalises once at the end.
+                            Only multiplies are reduced, by a branchless rounding Barrett step.</li>
+                        <li><strong>Constant-time at no cost</strong> &mdash; the kernel is straight-line
+                            arithmetic with no data-dependent branch and no conditional move, so the
+                            <code>ct_*</code> transforms are the same code as the variable-time ones and
+                            run at the same speed. Nothing for an optimisation barrier to protect.</li>
+                        <li><strong>Vectorised NTT on ARM64</strong> &mdash; native builds narrow to
+                            int16 and run eight Montgomery butterflies per NEON instruction, all seven
+                            layers included. <em>This page does not use that path</em>; see below.</li>
+                        <li><strong>Two-lane Keccak</strong> &mdash; native builds drive two independent
+                            SHAKE sponges through the ARMv8.2 SHA3 instructions at once, since those
+                            operate on 128-bit vectors holding two Keccak lanes.</li>
+                        <li><strong>Machine-checked proofs</strong> &mdash; the Barrett reductions,
+                            constant-time primitives and NTT correctness carry Coq developments in
+                            <code>proofs/</code>.</li>
+                    </ul>
+
+                    <div class="highlight" style="margin-top: 15px;">
+                        <p><strong>What you are actually running here.</strong> This page is compiled to
+                        <code>wasm32-unknown-unknown</code>, which has no NEON, so it exercises the
+                        <em>portable i64 kernel</em> &mdash; the same code path a non-ARM64 native build
+                        takes. Expect it to be several times slower than the figures quoted for Apple
+                        Silicon, and slower again for running inside a JavaScript engine. That the
+                        results still match the native ones bit for bit is the useful part: it is an
+                        independent cross-target check of the same arithmetic.</p>
+                    </div>
+
+                    <p style="margin-top: 15px;"><strong>Native reference figures</strong>
+                        (Apple M5, Criterion, q = 3329, n = 256):</p>
+                    <ul style="margin-left: 30px; margin-top: 10px; line-height: 1.8;">
+                        <li>Forward NTT <strong>176 ns</strong>, inverse NTT <strong>239 ns</strong>,
+                            NTT multiply <strong>503 ns</strong> &mdash; identical variable-time and
+                            constant-time</li>
+                        <li>Polynomial add / subtract <strong>63 ns</strong> (L1-bandwidth bound)</li>
+                        <li>Full ML-KEM-512 session (keygen + encaps + decaps)
+                            <strong>13.7&ndash;14.1 &micro;s</strong>, against 16.19 &micro;s for
+                            LibOQS 0.16.0 re-measured on the same machine &mdash; both passing the
+                            same NIST vectors</li>
+                    </ul>
+
                     <p style="margin-top: 15px;"><strong>Features:</strong></p>
                     <ul style="margin-left: 30px; margin-top: 10px; line-height: 1.8;">
-                        <li><strong>Constant-time operations</strong> - Side-channel resistant for cryptographic security</li>
-                        <li><strong>NTT support</strong> - O(n log n) polynomial multiplication for Kyber-512</li>
-                        <li><strong>Type-safe modulus</strong> - Compile-time guarantees prevent mixing different moduli</li>
-                        <li><strong>Zero heap allocations</strong> - All operations use stack memory only</li>
-                        <li><strong>no_std compatible</strong> - Works in embedded systems and WebAssembly</li>
+                        <li><strong>Constant-time operations</strong> &mdash; side-channel resistant,
+                            with <code>subtle</code> optimisation barriers on the scalar primitives</li>
+                        <li><strong>Type-safe modulus</strong> &mdash; the modulus lives in the type, so
+                            mixing two of them is a compile error</li>
+                        <li><strong>Zero heap allocations</strong> &mdash; stack memory only</li>
+                        <li><strong>no_std compatible</strong> &mdash; twiddle tables are built by const
+                            evaluation rather than lazily at runtime, so the NTT needs no allocator and
+                            no <code>std</code></li>
                     </ul>
 
                     <p style="margin-top: 15px;"><strong>Use Cases:</strong></p>
                     <ul style="margin-left: 30px; margin-top: 10px; line-height: 1.8;">
-                        <li>Post-quantum cryptography (Kyber-512, Dilithium)</li>
+                        <li>Post-quantum cryptography (ML-KEM / Kyber-512, Dilithium)</li>
                         <li>Lattice-based encryption schemes</li>
                         <li>Zero-knowledge proofs</li>
                         <li>Secure multiparty computation</li>
@@ -493,7 +572,7 @@ Public polynomial (secret + error mod ${moduletto.kyber_modulus()}):
 ${formatPoly(publicPoly)}
 
 ✅ All computations done in WASM (Rust i64)
-⚡ Performance: ~91 ns per polynomial operation
+⚡ Native reference: 63 ns per polynomial add/sub (this runs in wasm)
 🛡️ Constant-time: Side-channel resistant`;
 
                 document.getElementById('keyGenResult').textContent = result;
@@ -635,13 +714,13 @@ Polynomial Addition via WASM:
   Per operation: ${(polyTime * 1000000 / polyIterations).toFixed(2)} ns
   Throughput: ${(polyIterations / (polyTime / 1000)).toLocaleString()} poly/sec
 
-Native Rust Performance (for comparison):
-  • Coefficient add: ~2 ns
-  • Coefficient mul: ~5 ns
-  • Polynomial add: ~91 ns
+Native Rust, same operations (Apple M5, Criterion):
+  • Coefficient add: 0.39 ns
+  • Coefficient mul: 0.55 ns
+  • Polynomial add (256): 63 ns
 
-Note: WASM includes some JS↔WASM crossing overhead
-     Direct Rust is 3x faster than i128!`;
+Note: this build is the portable i64 kernel compiled to wasm32 —
+     no NEON — plus JS↔WASM crossing overhead on every call.`;
 
                 document.getElementById('perfResult').textContent = result;
             } catch (e) {
