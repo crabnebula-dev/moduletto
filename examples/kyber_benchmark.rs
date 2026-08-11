@@ -388,7 +388,7 @@ fn kyber_keygen_hw(d: &[u8; 32], z: &[u8; 32], consts: &NTTConstants) -> SecretK
 
 fn kyber_encaps_hw(pk: &PublicKey, m: &[u8; 32], consts: &NTTConstants) -> (Ciphertext, [u8; 32]) {
     // FIPS 203 Alg. 17 (ML-KEM.Encaps_internal): (K, r) = G(m ‖ H(ek)).
-    // Round-3 Kyber hashed m first; FIPS 203 feeds it in directly.
+    // Round-3 Kyber hashed m first; FIPS 203 uses it directly.
     let g = sha3_512_hw(&[m.as_slice(), pk.h_pk.as_slice()]);
     let mut k_bar = [0u8; 32]; let mut r_seed = [0u8; 32];
     k_bar.copy_from_slice(&g[..32]); r_seed.copy_from_slice(&g[32..]);
@@ -1078,11 +1078,11 @@ mod neon_poly {
         vsubq_s16(a, vmulq_s16(t, q))
     }
 
-    // The len ∈ {4, 2} layers can't use the plain "load top / load bottom"
-    // pattern — at those widths both halves of a butterfly sit inside the same
-    // 8-lane vector. Doing them scalar costs ~250 ns of a ~300 ns transform,
-    // while the five wide layers together take only ~53 ns. Deinterleaving with
-    // uzp/zip (len = 2) or 64-bit half splits (len = 4) keeps all lanes busy.
+    // The len ∈ {4, 2} layers cannot use the plain "load top / load bottom"
+    // pattern: at those widths both halves of a butterfly sit inside the same
+    // 8-lane vector. Running them scalar costs ~250 ns of a ~300 ns transform,
+    // while the five wide layers together take ~53 ns. Deinterleaving with
+    // uzp/zip (len = 2) or 64-bit half splits (len = 4) uses all lanes.
 
     #[target_feature(enable = "neon")]
     pub unsafe fn ntt_layer4(r: &mut [i16; 256], k0: usize) {
@@ -1275,9 +1275,9 @@ struct Ciphertext16 {
 //   dk = ByteEncode12(s_hat) ‖ ek ‖ H(ek) ‖ z          (768 + 800 + 64 = 1632)
 //   c  = ByteEncode10(Compress10(u)) ‖ ByteEncode4(Compress4(v))     (768)
 //
-// These are only needed to talk to the outside world — the KEM itself keeps
-// polynomials in its own representation — but they are exactly what the ACVP
-// known-answer tests pin down, so they are the conformance surface.
+// These are needed only at the external interface; the KEM keeps polynomials in
+// its own representation internally. They are what the ACVP known-answer tests
+// constrain.
 
 const ML_KEM_512_EK_BYTES: usize = 800;
 const ML_KEM_512_DK_BYTES: usize = 1632;
@@ -1372,17 +1372,16 @@ fn ct_from_bytes(c: &[u8]) -> Ciphertext16 {
 // The FEAT_SHA3 instructions (EOR3, RAX1, XAR, BCAX) operate on 128-bit vectors,
 // which hold *two* 64-bit Keccak lanes. The `keccak` crate's asm path (what
 // `sha3 = { features = ["asm"] }` uses) drives a single state through them and
-// leaves the upper half of every register idle — which is why the earlier
-// measurement found "SHA3 hardware gives no measurable advantage". Running two
-// independent sponges, one per lane, doubles the throughput for free:
+// leaves the upper half of every register unused, which accounts for the earlier
+// measurement of "no measurable advantage" from SHA3 hardware. Running two
+// independent sponges, one per lane, doubles throughput:
 //
 //   scalar XKCP (this example's inline impl)  129.3 ns / permutation
 //   sha3 crate, asm feature                   118.4 ns / permutation
 //   this, two lanes                            56.5 ns / permutation
 //
-// Kyber has plenty of independent streams to pair up: the k² = 4 matrix
-// polynomials and the k noise polynomials are all sampled from separate SHAKE
-// invocations.
+// Kyber has independent streams available to pair: the k² = 4 matrix polynomials
+// and the k noise polynomials are each sampled from a separate SHAKE invocation.
 #[cfg(target_arch = "aarch64")]
 mod keccak_x2 {
     use std::arch::aarch64::*;
@@ -1579,9 +1578,9 @@ fn absorb_uniform_candidates(buf: &[u8], r: &mut Poly16, mut count: usize) -> us
 
 fn gen_poly_uniform_i16(rho: &[u8; 32], i: u8, j: u8) -> Poly16 {
     // Squeeze one 168-byte block at a time instead of a fixed 1024-byte buffer.
-    // The old version always ran 7 permutations; rejection sampling needs ~3.3
-    // on average. It also read out of bounds — and panicked — in the (vanishingly
-    // unlikely) case that 1024 bytes were not enough.
+    // The previous version always ran 7 permutations; rejection sampling needs
+    // ~3.3 on average. It also read out of bounds, and panicked, if 1024 bytes
+    // were not enough.
     let mut sponge = ShakeStream::new(168, &[rho.as_slice(), &[j, i]], 0x1f);
     let mut r = [0i16; 256];
     let mut count = 0usize;
@@ -1815,12 +1814,11 @@ fn poly_to_bytes_i16(p: &Poly16, out: &mut [u8; 384]) {
 // Compress a i16 polynomial (d bits/coeff) into packed bytes.
 // Reference C poly_compress: normalize negative with (t >> 15) & q.
 // Compression packs d-bit values back to back, little-endian within each byte.
-// Doing that a bit at a time costs a read-modify-write of the same output byte
-// on every iteration — 2560 serially dependent memory ops for d=10 — which made
-// this the single most expensive operation in the whole KEM (3.6 µs, more than
-// the four SHAKE-128 matrix streams put together). The d=10 and d=4 cases used
-// by Kyber-512 are handled a group at a time in registers instead, exactly as
-// pq-crystals/kyber does: 4 coefficients into 5 bytes, or 2 into 1.
+// Packing a bit at a time costs a read-modify-write of the same output byte on
+// every iteration: 2560 serially dependent memory operations for d=10, measured
+// at 3.6 µs, which was the most expensive operation in the KEM. The d=10 and d=4
+// cases used by Kyber-512 are handled a group at a time in registers instead,
+// as in pq-crystals/kyber: 4 coefficients into 5 bytes, or 2 into 1.
 
 /// Round c·2^d / q into d bits, for a possibly-negative centred coefficient.
 #[inline(always)]
@@ -1941,9 +1939,9 @@ fn msg_decode_i16(p: &Poly16) -> [u8; 32] {
 // ── i16 NEON Kyber KEM ───────────────────────────────────────────────────────
 
 fn kyber_keygen_neon(d: &[u8; 32], z: &[u8; 32]) -> SecretKey16 {
-    // FIPS 203 Alg. 13 (K-PKE.KeyGen): (rho, sigma) = G(d ‖ k), where the
-    // parameter byte k is the domain separation that final FIPS 203 added and
-    // round-3 Kyber lacked. Omitting it yields a different, non-conformant key.
+    // FIPS 203 Alg. 13 (K-PKE.KeyGen): (rho, sigma) = G(d ‖ k). The parameter
+    // byte k is the domain separation added in final FIPS 203; round-3 Kyber
+    // omitted it. Omitting it produces a non-conformant key.
     let g = sha3_512(&[d.as_slice(), &[KYBER_K as u8]]);
     let mut rho = [0u8; 32]; let mut sigma = [0u8; 32];
     rho.copy_from_slice(&g[..32]); sigma.copy_from_slice(&g[32..]);
@@ -1986,7 +1984,7 @@ fn kyber_keygen_neon(d: &[u8; 32], z: &[u8; 32]) -> SecretKey16 {
 
 fn kyber_encaps_neon(pk: &PublicKey16, m: &[u8; 32]) -> (Ciphertext16, [u8; 32]) {
     // FIPS 203 Alg. 17 (ML-KEM.Encaps_internal): (K, r) = G(m ‖ H(ek)).
-    // Round-3 Kyber hashed m first; FIPS 203 feeds it in directly.
+    // Round-3 Kyber hashed m first; FIPS 203 uses it directly.
     let g = sha3_512(&[m.as_slice(), pk.h_pk.as_slice()]);
     let mut k_bar = [0u8; 32]; let mut r_seed = [0u8; 32];
     k_bar.copy_from_slice(&g[..32]); r_seed.copy_from_slice(&g[32..]);
@@ -2030,8 +2028,8 @@ fn kyber_encaps_neon(pk: &PublicKey16, m: &[u8; 32]) -> (Ciphertext16, [u8; 32])
     let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
     for ue in &u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
     ct_bytes.extend_from_slice(&v_enc);
-    // FIPS 203: the shared secret is K straight out of G. Round-3 Kyber
-    // applied a final KDF(K ‖ H(c)); FIPS 203 removed it.
+    // FIPS 203: the shared secret is K as produced by G. Round-3 Kyber applied
+    // a final KDF(K ‖ H(c)); FIPS 203 removed it.
     let ss = k_bar;
 
     (Ciphertext16 { u_enc, v_enc }, ss)
@@ -2097,11 +2095,11 @@ fn measure_ns<F: FnMut()>(iters: usize, mut f: F) -> f64 {
 //                                   cases that must produce the implicit-
 //                                   rejection key rather than fail
 //
-// This is the check that self-consistency (encaps == decaps) cannot give you:
-// an implementation can be perfectly self-consistent and still not be ML-KEM.
-// It is what caught this example previously implementing round-3 Kyber —
-// missing the G(d ‖ k) domain separation, pre-hashing m in encapsulation,
-// applying round-3's final KDF, and using a zeroed implicit-rejection seed.
+// A self-consistency check (encaps == decaps) is satisfied by any internally
+// coherent scheme, so it cannot establish conformance. These vectors detected
+// that the example previously implemented round-3 Kyber: missing the G(d ‖ k)
+// domain separation, pre-hashing m in encapsulation, applying round-3's final
+// KDF, using a zeroed implicit-rejection seed, and sampling with η₁ = 2.
 
 const ML_KEM_512_KATS: &str = include_str!("../tests/kat/ml_kem_512_fips203.txt");
 
@@ -2278,9 +2276,9 @@ fn main() {
 
     let consts = NTTConstants::new();
     let seed = [0u8; 32];
-    // FIPS 203 KeyGen takes two independent 32-byte seeds: d (key material)
-    // and z (the implicit-rejection secret). z must be secret and unpredictable
-    // — a fixed or zero z lets anyone compute the rejection key.
+    // FIPS 203 KeyGen takes two independent 32-byte seeds: d (key material) and
+    // z (the implicit-rejection secret). z must be secret and unpredictable; a
+    // fixed or zero z lets anyone compute the rejection key.
     let zseed = [1u8; 32];
     let m    = [1u8; 32];
 
@@ -2429,10 +2427,10 @@ fn main() {
             println!("  Codec equivalence (fast vs bit-at-a-time, d=10/4/11/5): PASSED");
         }
 
-        // The encaps==decaps check above only proves internal consistency: it
-        // would still pass if the two-lane sponge swapped lanes, or if the
-        // streaming sampler diverged from the original. Check conformance
-        // directly against independent serial references.
+        // The encaps==decaps check above establishes only internal consistency:
+        // it would still pass if the two-lane sponge swapped lanes, or if the
+        // streaming sampler diverged from the original. Check these directly
+        // against independent serial references.
         {
             // Reference sampler: one fixed 1024-byte squeeze, as before.
             fn gen_poly_uniform_reference(rho: &[u8; 32], i: u8, j: u8) -> Poly16 {

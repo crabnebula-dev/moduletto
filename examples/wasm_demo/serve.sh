@@ -1,9 +1,8 @@
 #!/bin/bash
 # Simple HTTP server for WASM demo
 
-# pkg/ is a wasm-pack build artifact and is gitignored, so a fresh clone (or a
-# cleaned tree) has no moduletto.js and the page 404s with no useful explanation.
-# Check for it up front rather than serving a broken demo.
+# pkg/ is a wasm-pack build artifact and is gitignored, so a fresh or cleaned
+# tree has no moduletto.js and the page returns 404. Check for it before serving.
 cd "$(dirname "$0")"
 if [ ! -f pkg/moduletto.js ]; then
     echo "❌ pkg/moduletto.js is missing — the WASM package has not been built."

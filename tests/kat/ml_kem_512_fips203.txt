@@ -1,7 +1,7 @@
 # ML-KEM-512 known-answer tests (FIPS 203)
 # Source: NIST ACVP-Server, gen-val/json-files/{ML-KEM-keyGen-FIPS203,ML-KEM-encapDecap-FIPS203}
 #   https://github.com/usnistgov/ACVP-Server
-# Extracted verbatim; hex is lowercase-insensitive. One record per line:
+# Extracted verbatim. One record per line:
 #   keygen <tcId> <d> <z> <ek> <dk>
 #   encaps <tcId> <ek> <m> <c> <k>
 #   decaps <tcId> <dk> <c> <k>      (VAL group: includes modified-ciphertext

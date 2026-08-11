@@ -162,9 +162,9 @@ impl Default for NTTConstants {
 // Instead only the multiply is reduced (to `[-q, q]`), coefficients are allowed
 // to drift, and a single canonicalisation pass runs at the end.
 //
-// This also removes every `select` from the inner loop: what remains is
-// straight-line multiply/add/shift on fixed-width integers, which is both
-// faster and more obviously constant-time than a chain of conditional moves.
+// This also removes every `select` from the inner loop; what remains is
+// straight-line multiply/add/shift on fixed-width integers, which is faster than
+// a chain of conditional moves and has no data-dependent control flow.
 //
 // Growth bounds (verified numerically against the analytic worst case):
 //
@@ -184,8 +184,8 @@ const LAZY_MU: i64 = (1_i64 << LAZY_S) / KYBER_Q;
 /// Rounding Barrett reduction.
 ///
 /// For any `|x| < 2^(S-1)` this returns some `r ≡ x (mod q)` with `|r| ≤ q`.
-/// The result is *not* canonical — that is the point; canonicalising costs a
-/// conditional and the NTT does not need it until the very end.
+/// The result is not canonical. Canonicalising costs a conditional, and the NTT
+/// does not require canonical values until the final pass.
 ///
 /// Four ALU operations (multiply, add, arithmetic shift, multiply-subtract),
 /// no branch and no conditional move.
@@ -201,9 +201,9 @@ fn fq_reduce(x: i64) -> i64 {
 
 /// Branchless canonicalisation into `[0, q)`, valid for `|x| < 2^(S-1)`.
 ///
-/// Pure mask arithmetic: no comparison, no conditional move, no branch. There
-/// is nothing here for the optimiser to turn back into a data-dependent branch,
-/// so this is constant-time by construction and needs no barrier.
+/// Pure mask arithmetic: no comparison, no conditional move, no branch. The
+/// optimiser has no `select` to convert into a data-dependent branch, so this is
+/// constant-time by construction and requires no barrier.
 #[inline(always)]
 fn canonicalize(x: i64) -> i64 {
     let v = fq_reduce(x); // |v| ≤ q
@@ -223,8 +223,8 @@ fn canonicalize_wide(x: i64) -> i64 {
 
 /// Canonical modular addition: `a + b mod q` for canonical `a`, `b`.
 ///
-/// The sum lies in `[0, 2q)`; the fixup subtracts q under a sign mask instead
-/// of branching, so a loop over these vectorises.
+/// The sum lies in `[0, 2q)`. The fixup subtracts q under a sign mask rather
+/// than branching, which allows a loop over these to vectorise.
 #[inline(always)]
 fn add_canonical(a: i64, b: i64) -> i64 {
     // Subtract q up front so the fixup is a masked *add* — one instruction
@@ -356,8 +356,8 @@ fn basemul_kernel(a: &[i64; KYBER_N], b: &[i64; KYBER_N]) -> [i64; KYBER_N] {
 //
 // q = 3329 fits in 12 bits, so a whole polynomial is 256 × i16 = 512 bytes
 // rather than 2 KiB, and NEON can drive eight butterflies per instruction.
-// AArch64 has no 64-bit SIMD multiply, so the portable `i64` kernel above can
-// never vectorise its multiplies — this backend exists to get past that wall.
+// AArch64 has no 64-bit SIMD multiply, so the portable `i64` kernel above cannot
+// vectorise its multiplies; this backend exists for that reason.
 //
 // The arithmetic mirrors pq-crystals/kyber `ref/ntt.c`: Montgomery
 // multiplication with R = 2^16 and QINV = -3327, twiddles stored pre-multiplied
@@ -460,12 +460,12 @@ mod neon16 {
 
     // The len ∈ {4, 2} layers cannot use the straightforward "load top, load
     // bottom" pattern: at those widths both halves of a butterfly live inside
-    // the same 8-lane vector. Doing them scalar is what the prototype in
-    // `examples/kyber_benchmark.rs` does, and it costs ~250 ns of a ~300 ns
-    // transform — five vectorised layers take only ~53 ns between them.
+    // the same 8-lane vector. Running them scalar, as the prototype in
+    // `examples/kyber_benchmark.rs` did, costs ~250 ns of a ~300 ns transform;
+    // the five vectorised layers take ~53 ns between them.
     //
-    // The fix is to deinterleave with `uzp`/`zip` (for len = 2) or to split
-    // 64-bit halves (for len = 4), so all eight lanes stay busy.
+    // Deinterleaving with `uzp`/`zip` (len = 2) or splitting 64-bit halves
+    // (len = 4) uses all eight lanes.
 
     /// Forward layer with len = 4: 32 blocks of 8, two blocks per iteration.
     #[target_feature(enable = "neon")]
@@ -951,13 +951,13 @@ impl NTTPoly {
     /// value-dependent memory access. The trip counts and the twiddle-index
     /// sequence depend only on `KYBER_N`, never on coefficient values.
     ///
-    /// This is a change in strategy from the previous implementation, which
-    /// composed [`ConstantTimeOps`] primitives and therefore paid a `subtle`
-    /// optimisation barrier per operation. Those barriers exist to stop the
-    /// compiler folding a `select` back into a branch; the lazy kernel contains
-    /// no `select` to fold, so the barriers protect nothing here while costing
-    /// roughly 4x. The remaining conditional — canonicalisation — is expressed
-    /// as mask arithmetic (`v + (q & (v >> 63))`) rather than a comparison.
+    /// This is a change from the previous implementation, which composed
+    /// [`ConstantTimeOps`] primitives and paid a `subtle` optimisation barrier
+    /// per operation. Those barriers prevent the compiler folding a `select`
+    /// back into a branch; the lazy kernel contains no `select`, so they have no
+    /// effect here while costing roughly 4x. The remaining conditional,
+    /// canonicalisation, is expressed as mask arithmetic
+    /// (`v + (q & (v >> 63))`) rather than a comparison.
     ///
     /// One platform caveat: this assumes 64-bit integer multiply is
     /// fixed-latency, which holds on all 64-bit cores but not on some
@@ -1239,9 +1239,9 @@ mod ct_tests {
 /// Cross-checks between the NEON int16 backend and the portable i64 kernel.
 ///
 /// The two are independent implementations over different representations, so
-/// agreement on random inputs is a strong correctness signal for both. These
-/// also pin the Montgomery scale constants `F_STANDALONE` / `F_AFTER_BASEMUL`,
-/// which are the one place the backend diverges from the reference C.
+/// agreement on random inputs exercises both. These also check the Montgomery
+/// scale constants `F_STANDALONE` / `F_AFTER_BASEMUL`, which are where the
+/// backend differs from the reference C.
 #[cfg(test)]
 mod backend_tests {
     use super::*;

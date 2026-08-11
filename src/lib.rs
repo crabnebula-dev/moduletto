@@ -19,26 +19,25 @@
 //!
 //! ## Design notes
 //!
-//! 1. **i64 beats i128 for small moduli.** i64 is ARM64's native register
-//!    width; i128 costs several instructions per operation. For any modulus
-//!    below 2^31 — Kyber, Dilithium — i64 is the right scalar carrier.
+//! 1. **Scalar carrier: i64, not i128.** i64 is ARM64's native register width;
+//!    i128 costs several instructions per operation. Applies to any modulus
+//!    below 2^31, including Kyber and Dilithium.
 //!
-//! 2. **Lazy reduction, not canonical reduction.** With q = 3329 in a 64-bit
-//!    register there are ~50 spare bits, so the NTT keeps coefficients in a
-//!    redundant centred representation and canonicalises once at the end.
-//!    Only multiplies are reduced, via a branchless rounding Barrett step
-//!    (proved correct in `proofs/BarrettReduction.v`).
+//! 2. **Lazy reduction.** With q = 3329 in a 64-bit register there are ~50
+//!    spare bits, so the NTT keeps coefficients in a redundant centred
+//!    representation and canonicalises once at the end. Only multiplies are
+//!    reduced, via a branchless rounding Barrett step (proved correct in
+//!    `proofs/BarrettReduction.v`).
 //!
-//! 3. **SIMD helps once the element type is narrow enough.** AArch64 has no
-//!    64-bit SIMD multiply, so an i64 NTT can never vectorise its multiplies.
-//!    Narrowing to i16 lets NEON do eight Montgomery butterflies per
-//!    instruction; see [`ntt`]. The two narrowest layers need `uzp`/`zip`
-//!    deinterleaving — left scalar they cost more than the other five layers
-//!    combined.
+//! 3. **Vectorisation requires a narrow element type.** AArch64 has no 64-bit
+//!    SIMD multiply, so an i64 NTT cannot vectorise its multiplies. Narrowing
+//!    to i16 allows eight Montgomery butterflies per NEON instruction; see
+//!    [`ntt`]. The two narrowest layers need `uzp`/`zip` deinterleaving; left
+//!    scalar they cost more than the other five layers combined.
 //!
-//! 4. **Constant-time need not mean slow.** The branchless kernel has no
-//!    data-dependent branch and no conditional move, so the `ct_*` transforms
-//!    are the same code as the variable-time ones and run at the same speed.
+//! 4. **Constant-time cost.** The branchless kernel has no data-dependent
+//!    branch and no conditional move, so the `ct_*` transforms are the same
+//!    code as the variable-time ones and run at the same speed.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(incomplete_features)]

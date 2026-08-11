@@ -22,9 +22,8 @@
     // constant-time conditional subtraction if r >= N
 >>
 
-    The two branches compute the same mathematical value — the width is chosen
-    at compile time from N, and the model below is width-agnostic, so the
-    proofs cover both. *)
+    Both branches compute the same value; the width is chosen at compile time
+    from N. The model below is width-agnostic, so the proofs cover both. *)
 (** *)
 (**
 *)
@@ -249,9 +248,9 @@ Qed.
 >>
 
     This section proves the two properties the kernel relies on: the result is
-    congruent to the input, and it is bounded by N in absolute value. The
-    absence of a conditional correction is what makes the operation branchless,
-    hence constant-time, and hence vectorisable. *)
+    congruent to the input, and it is bounded by N in absolute value. With no
+    conditional correction the operation is branchless, therefore constant-time
+    and vectorisable. *)
 
 Definition fq_reduce (x N mu h M : Z) : Z :=
   let quot := (x * mu + h) / M in
@@ -326,8 +325,8 @@ Qed.
 
     LAZY_MU = 2^32 / 3329 = 1290167, the rounding offset is h = 2^31, and the
     admissible input range is |x| < 2^31. The growth analysis in src/ntt.rs
-    shows the widest multiply input reaching 784_677_195 in the inverse
-    transform, comfortably inside that range. *)
+    gives a maximum multiply input of 784_677_195 in the inverse transform,
+    within that range. *)
 Theorem fq_reduce_kyber :
   forall x,
     - (2 ^ 31) < x < 2 ^ 31 ->

@@ -21,10 +21,10 @@
 //! # Performance Trade-offs
 //!
 //! These per-operation primitives cost roughly 1.3-1.5x their variable-time
-//! counterparts. Note that the polynomial-level constant-time routines in
-//! [`crate::ntt`] no longer build on them: a whole NTT expressed as branchless
-//! straight-line arithmetic has no `select` to protect, so it needs no barriers
-//! and runs at variable-time speed. See [`crate::ntt::NTTPoly::ct_ntt`].
+//! counterparts. The polynomial-level constant-time routines in [`crate::ntt`]
+//! do not build on them: an NTT expressed as branchless straight-line
+//! arithmetic contains no `select`, so it requires no barriers and runs at
+//! variable-time speed. See [`crate::ntt::NTTPoly::ct_ntt`].
 //!
 //! # Example
 //!

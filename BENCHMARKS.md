@@ -28,13 +28,12 @@ repeats, keygen + encaps + decaps, shared-secret agreement asserted).
 | Sessions / sec | **~72,000** | 61,800 | 48,900 | 20,900 |
 | vs LibOQS 0.16.0 | **0.85×** | baseline | 1.26× | 2.96× |
 
-Both implementations pass the same NIST ACVP ML-KEM-512 vectors, so this is a
-like-for-like comparison of the same algorithm.
+Both implementations pass the same NIST ACVP ML-KEM-512 vectors, so this compares
+the same algorithm on both sides.
 
-**LibOQS 0.16.0 (released 2026-07-09) is itself 1.26× faster than 0.15.0.**
-Earlier revisions of this document compared against 0.15.0 at 22.44 µs;
-re-measuring 0.15.0 here gives 20.43 µs, so that figure was also pessimistic.
-Both corrections cut against us.
+LibOQS 0.16.0 (released 2026-07-09) is 1.26× faster than 0.15.0. Earlier
+revisions of this document compared against 0.15.0 at 22.44 µs; re-measuring
+0.15.0 here gives 20.43 µs. Both corrections reduce the reported margin.
 
 moduletto's other two backends, for reference:
 
@@ -53,10 +52,10 @@ every invocation — 25 keyGen (AFT), 25 encapsulation (AFT), 10 decapsulation
 key). Vectors live in `tests/kat/ml_kem_512_fips203.txt`, extracted verbatim from
 [usnistgov/ACVP-Server](https://github.com/usnistgov/ACVP-Server).
 
-All three backends run them, via a byte-level `MlKem512Backend` trait — 180 cases
-per invocation. The backends keep different internal representations (int16 vs
+All three backends run them via a byte-level `MlKem512Backend` trait, 180 cases
+per invocation. The backends use different internal representations (int16 vs
 int64 coefficients, three hashing paths); the vectors constrain only the FIPS 203
-byte encodings, which is where they meet:
+byte encodings, so that is the shared interface:
 
 | Backend | keyGen | encaps | decaps |
 |---------|:------:|:------:|:------:|
@@ -64,10 +63,10 @@ byte encodings, which is where they meet:
 | i64 NTT + inline Keccak | 25/25 | 25/25 | 10/10 |
 | i64 NTT + sha3 crate (asm) | 25/25 | 25/25 | 10/10 |
 
-Introducing them found that the implementation was **not ML-KEM**. The previous
+Adding these vectors showed the implementation was not ML-KEM. The previous
 self-check — encapsulate, decapsulate, confirm the shared secrets match — is
-satisfied by any internally coherent scheme, so it had never been in a position
-to notice:
+satisfied by any internally coherent scheme, so it could not detect the
+following deviations:
 
 | Deviation | Was | FIPS 203 |
 |-----------|-----|----------|
@@ -75,18 +74,18 @@ to notice:
 | Encaps hash input | `G(H(m) ‖ H(ek))` | `G(m ‖ H(ek))` |
 | Shared secret | `KDF(K ‖ H(c))` (round-3) | `K` |
 | Implicit rejection | `SHA3-256(z ‖ H(c))` | `J(z ‖ c)` = `SHAKE256(z ‖ c, 32)` |
-| Rejection seed `z` | **hardcoded to zero** | random, stored in `dk` |
+| Rejection seed `z` | hardcoded to zero | random, stored in `dk` |
 | Noise parameter | η₁ = 2 | η₁ = 3 (η₂ = 2) |
 
-The zeroed `z` is the one that is a security bug rather than a conformance nit:
-implicit rejection is supposed to return a key the attacker cannot predict, and
-a constant `z` makes it computable by anyone holding the ciphertext.
+The zeroed `z` is a security defect, not only a conformance one: implicit
+rejection must return a key the attacker cannot predict, and a constant `z` makes
+it computable by anyone holding the ciphertext.
 
-Fixing all six made the KEM **faster**, 16.2 → 13.9 µs. Round-3's final KDF hashes
-the entire 768-byte ciphertext with SHA3-256 — six Keccak permutations per
-encapsulation, and again during decapsulation's re-encryption — and FIPS 203 does
-not have it. That saving outweighs the wider η₁ = 3 noise sampling (192 bytes per
-polynomial instead of 128, so two SHAKE-256 blocks instead of one).
+Fixing all six reduced runtime from 16.2 to 13.9 µs. Round-3's final KDF hashes
+the entire 768-byte ciphertext with SHA3-256 (six Keccak permutations per
+encapsulation, and again during decapsulation's re-encryption); FIPS 203 does not
+have it. That saving exceeds the added cost of η₁ = 3 noise sampling, which needs
+192 bytes per polynomial instead of 128, so two SHAKE-256 blocks instead of one.
 
 ---
 
@@ -120,7 +119,7 @@ Criterion, before → after, same machine and session:
 - **`subtle` built with `core_hint_black_box`** (one line in `Cargo.toml`). The
   default barrier is `read_volatile`, which forces a stack round-trip on every
   `Choice` and blocks vectorisation; `core::hint::black_box` is a register
-  fence. 30–44% on every constant-time path on its own.
+  fence. This change alone accounts for 30–44% on every constant-time path.
 - **Lazy reduction.** With q = 3329 in a 64-bit register there are ~50 spare
   bits, so coefficients stay in a redundant centred representation through all
   seven layers and are canonicalised once at the end. Only multiplies are
@@ -129,16 +128,16 @@ Criterion, before → after, same machine and session:
 - **Constant-time became branchless rather than barrier-guarded.** The old
   `ct_ntt` paid a `subtle` barrier per operation — three per butterfly, 2688 per
   transform — to stop the compiler folding a `select` into a branch. The lazy
-  kernel contains no `select`, so the barriers protected nothing while costing
-  ~4×. The `ct_*` transforms are now the same code as their variable-time
+  kernel contains no `select`, so the barriers had no effect while costing ~4×.
+  The `ct_*` transforms are now the same code as their variable-time
   counterparts. The per-scalar `modn_ct` primitives are unchanged.
 - **All seven NTT layers vectorised.** AArch64 has no 64-bit SIMD multiply, so
   an i64 NTT can never vectorise its multiplies; the library narrows to i16 and
-  runs eight Montgomery butterflies per instruction. Critically the two
-  narrowest layers (len = 4, len = 2) must be vectorised too — left scalar, as
-  in the original prototype, they cost ~250 ns of a ~300 ns transform while the
-  five wide layers together take only ~53 ns. They need `uzp`/`zip`
-  deinterleaving because both halves of a butterfly share a vector.
+  runs eight Montgomery butterflies per instruction. The two narrowest layers
+  (len = 4, len = 2) also need vectorising: left scalar, as in the original
+  prototype, they cost ~250 ns of a ~300 ns transform, while the five wide
+  layers together take ~53 ns. They require `uzp`/`zip` deinterleaving because
+  both halves of a butterfly share a vector.
 - Compile-time twiddle tables (was `OnceLock`), lazy accumulation in
   `mul_schoolbook`, branchless polynomial add/sub.
 
@@ -155,7 +154,7 @@ out[bit_pos / 8] |= bit << (bit_pos % 8);
 2560 iterations for one polynomial, each a read-modify-write of the same output
 byte, so the whole loop is one serial store→load dependency chain. Replacing it
 with the reference's grouped packing (4 coefficients into 5 bytes for d = 10, 2
-into 1 for d = 4) took it to **103 ns — a 35× improvement on that function**:
+into 1 for d = 4) reduced it to 103 ns, a 35× improvement on that function:
 
 | Codec | Before | After |
 |-------|-------:|------:|
@@ -164,20 +163,19 @@ into 1 for d = 4) took it to **103 ns — a 35× improvement on that function**:
 | `poly_decompress_i16` (d=10) | 792 ns | **41 ns** |
 | `poly_decompress_i16` (d=4) | 222 ns | **21 ns** |
 
-The bit-at-a-time versions are retained as `*_generic` and serve as the oracle
+The bit-at-a-time versions are retained as `*_generic` and used as the reference
 the fast paths are checked against.
 
 ### 3. Hashing (2026-08-11): 27.7 → 16.1 µs
 
-After the codec fix, hashing was ~65% of the session. Two problems, both worth
-more than the earlier note about "hashing overhead" suggested:
+After the codec fix, hashing was ~65% of the session. Two causes:
 
-**The SHA3 instructions were half idle.** ARMv8.2 FEAT_SHA3 (EOR3, RAX1, XAR,
-BCAX) operates on 128-bit vectors, which hold *two* 64-bit Keccak lanes. The
-`keccak` crate's asm path — what `sha3 = { features = ["asm"] }` selects — drives
-a single state through them and leaves the upper half of every register unused.
-That is why the 2026-03-19 session concluded "SHA3 hardware gives no measurable
-advantage": it was buying a 2× and immediately throwing it away.
+**Half the SHA3 vector width was unused.** ARMv8.2 FEAT_SHA3 (EOR3, RAX1, XAR,
+BCAX) operates on 128-bit vectors, which hold two 64-bit Keccak lanes. The
+`keccak` crate's asm path, selected by `sha3 = { features = ["asm"] }`, drives a
+single state through them and leaves the upper half of every register unused.
+This accounts for the 2026-03-19 finding that "SHA3 hardware gives no measurable
+advantage": the available 2× was not being used.
 
 | Keccak-f1600 implementation | ns / permutation |
 |-----------------------------|-----------------:|
@@ -185,13 +183,13 @@ advantage": it was buying a 2× and immediately throwing it away.
 | `sha3` crate, `asm` feature | 118.4 |
 | **two lanes, FEAT_SHA3 intrinsics** | **56.5** |
 
-Kyber has ample independent streams to pair: the k² = 4 matrix polynomials and
-the k noise polynomials each come from a separate SHAKE invocation.
+Kyber has independent streams available to pair: the k² = 4 matrix polynomials
+and the k noise polynomials each come from a separate SHAKE invocation.
 
 **The matrix sampler over-squeezed.** `gen_poly_uniform_i16` always squeezed a
-fixed 1024-byte buffer — 7 permutations — where rejection sampling needs ~3.3 on
-average. It also read out of bounds, and panicked, in the (vanishingly unlikely)
-case that 1024 bytes were not enough; the streaming replacement has no bound.
+fixed 1024-byte buffer (7 permutations) where rejection sampling needs ~3.3 on
+average. It also read out of bounds, and panicked, if 1024 bytes were not enough;
+the streaming replacement has no fixed bound.
 
 Combined effect on one encapsulation:
 
@@ -202,9 +200,9 @@ Combined effect on one encapsulation:
 | Keccak permutations per session | 130 | 34 scalar + paired |
 
 Single-lane use of the SHA3 instructions for the remaining unpairable hashes
-(H(pk), H(ct), G, KDF — each one sequential stream) was tried and measured no
+(H(pk), H(ct), G, KDF, each a single sequential stream) was tried and measured no
 faster: the per-call state conversion cancels the ~16 ns instruction advantage.
-It was reverted rather than kept as unearned complexity.
+It was reverted.
 
 ### Correctness
 
@@ -218,9 +216,9 @@ It was reverted rather than kept as unearned complexity.
   encaps == decaps, **codec equivalence** (grouped vs bit-at-a-time, bit for
   bit, over 2000 random polynomials in both canonical and centred form), and
   **sponge conformance** (the streaming sampler and the two-lane sponge against
-  serial single-stream references, over 200 random seeds). The last one matters
-  specifically because encaps == decaps would still pass if the two-lane sponge
-  swapped its lanes — the same blind spot that hid the FIPS 203 deviations above.
+  serial single-stream references, over 200 random seeds). The last check exists
+  because encaps == decaps would still pass if the two-lane sponge swapped its
+  lanes, the same gap that hid the FIPS 203 deviations above.
 - Fuzzing: 5.8M executions on `fuzz_ntt_roundtrip`, 306K on `fuzz_poly_mul`,
   50M on `fuzz_barrett`, 58M on `fuzz_ct_arith`. No findings.
 - All four Coq developments compile, with a new section in
@@ -228,11 +226,11 @@ It was reverted rather than kept as unearned complexity.
 
 ### Remaining gap
 
-Decapsulation is the one phase where LibOQS is still clearly ahead (6.22 vs
-7.13 µs). The unpairable long-message hashes — H(pk) over 800 bytes, H(ct) over
-768 bytes, 6 permutations each and inherently sequential — are close to a floor
-for a single stream. LibOQS also batches four Keccak lanes where the ISA allows
-and interleaves four polynomials per NTT call.
+The unpairable long-message hashes — H(pk) over 800 bytes and H(ct) over 768
+bytes, 6 permutations each and sequential — bound how much further single-stream
+hashing can be reduced. LibOQS batches four Keccak lanes where the ISA allows and
+interleaves four polynomials per NTT call, which are the two remaining
+differences in approach.
 
 ---
 

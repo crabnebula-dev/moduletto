@@ -19,9 +19,9 @@ Vectors are in [tests/kat/](tests/kat/), extracted verbatim from
 on every `cargo run --release --example kyber_benchmark` and exits non-zero on any
 mismatch.
 
-**All three backends are validated** — 180 cases per run — through a shared
-byte-level interface, so the NEON int16 path and both i64 paths are held to the
-same standard rather than only the one that gets benchmarked:
+All three backends are validated — 180 cases per run — through a shared
+byte-level interface, so the NEON int16 path and both i64 paths are covered,
+not only the one that gets benchmarked:
 
 ```
 FIPS 203 KATs (NIST ACVP ML-KEM-512), all backends:
@@ -30,25 +30,24 @@ FIPS 203 KATs (NIST ACVP ML-KEM-512), all backends:
     i64 NTT + sha3 crate (asm):   PASSED (25 keygen, 25 encaps, 10 decaps)
 ```
 
-This matters more than it sounds. The self-consistency check the example previously
-relied on — encapsulate, decapsulate, confirm the shared secrets agree — passes for
-*any* internally coherent scheme. Running the official vectors showed this code was
-implementing round-3 Kyber rather than FIPS 203 ML-KEM, and with a parameter error
-on top:
+The self-consistency check the example previously relied on — encapsulate,
+decapsulate, confirm the shared secrets agree — passes for any internally coherent
+scheme. Running the official vectors showed this code was implementing round-3
+Kyber rather than FIPS 203 ML-KEM, plus a parameter error:
 
 - `G(d)` instead of `G(d ‖ k)` — FIPS 203's key-generation domain separation
 - encapsulation hashed `m` before use; FIPS 203 feeds it in directly
 - round-3's final `KDF(K ‖ H(c))`; FIPS 203 uses `K` as the shared secret
 - implicit rejection via `SHA3-256(z ‖ H(c))` instead of `J(z ‖ c)`
-- **the implicit-rejection seed `z` was hardcoded to zero**, which is a real
-  weakness rather than a conformance nit: a predictable `z` makes the rejection
-  key computable by anyone
+- the implicit-rejection seed `z` was hardcoded to zero. This is a security
+  defect, not only a conformance one: a predictable `z` makes the rejection key
+  computable by anyone holding the ciphertext
 - η₁ = 2 where ML-KEM-512 requires η₁ = 3
 
-All are fixed, and the KATs now pass. Correcting them also made the KEM *faster*:
-dropping round-3's KDF removes a SHA3-256 over the full 768-byte ciphertext — six
-Keccak permutations — from every encapsulation, which more than pays for the wider
-η₁ = 3 noise sampling.
+All are fixed and the KATs pass. The corrections also reduced runtime: dropping
+round-3's KDF removes a SHA3-256 over the full 768-byte ciphertext (six Keccak
+permutations) from every encapsulation, which exceeds the added cost of η₁ = 3
+noise sampling.
 
 ## Performance
 
@@ -64,7 +63,7 @@ rebuilt and re-measured on the same machine, in the same session, with the same
 | **Total** | **13.7–14.1 us** | 16.19 us | 20.43 us | 47.87 us |
 | Sessions/sec | **~72,000** | 61,800 | 48,900 | 20,900 |
 
-moduletto is **~1.18x faster than LibOQS 0.16.0** and ahead in all three phases.
+moduletto is ~1.18x faster than LibOQS 0.16.0, and faster in all three phases.
 
 > LibOQS 0.16.0 (released 2026-07-09) is itself 1.26x faster than 0.15.0 at
 > ML-KEM-512, so comparisons against the older release overstate our lead.
@@ -80,11 +79,10 @@ Library primitives (Criterion, q = 3329, n = 256):
 | `mul_ntt` | 503 ns | 504 ns |
 | `poly_add` / `poly_sub` | 63 ns | 63 ns |
 
-The constant-time transforms cost the same as the variable-time ones because
-they *are* the same code: the kernel is branchless straight-line arithmetic with
-no data-dependent branch and no conditional move, so there is nothing a barrier
-would protect. See [BENCHMARKS.md](BENCHMARKS.md) for the full picture and the
-history behind these numbers.
+The constant-time transforms cost the same as the variable-time ones because they
+are the same code: the kernel is branchless straight-line arithmetic with no
+data-dependent branch and no conditional move, so no optimisation barrier is
+required. See [BENCHMARKS.md](BENCHMARKS.md) for the measurement history.
 
 ## What's Inside
 

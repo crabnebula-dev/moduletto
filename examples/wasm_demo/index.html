@@ -375,9 +375,9 @@
                         <p><strong>FIPS 203 conformant.</strong> The ML-KEM-512 implementation is
                         validated against the official NIST ACVP known-answer vectors &mdash; 25 keyGen,
                         25 encapsulation and 10 decapsulation cases (including modified-ciphertext
-                        rejection), run against all three backends on every build. Self-consistency
-                        checks cannot establish this: an implementation can encapsulate and decapsulate
-                        in perfect agreement with itself and still not be ML-KEM.</p>
+                        rejection), run against all three backends on every build. A self-consistency
+                        check cannot establish conformance: an implementation can encapsulate and
+                        decapsulate in agreement with itself and still not be ML-KEM.</p>
                     </div>
 
                     <p style="margin-top: 15px;"><strong>What makes it fast:</strong></p>
@@ -389,10 +389,10 @@
                         <li><strong>Constant-time at no cost</strong> &mdash; the kernel is straight-line
                             arithmetic with no data-dependent branch and no conditional move, so the
                             <code>ct_*</code> transforms are the same code as the variable-time ones and
-                            run at the same speed. Nothing for an optimisation barrier to protect.</li>
+                            run at the same speed. No optimisation barrier is required.</li>
                         <li><strong>Vectorised NTT on ARM64</strong> &mdash; native builds narrow to
                             int16 and run eight Montgomery butterflies per NEON instruction, all seven
-                            layers included. <em>This page does not use that path</em>; see below.</li>
+                            layers included. This page does not use that path; see below.</li>
                         <li><strong>Two-lane Keccak</strong> &mdash; native builds drive two independent
                             SHAKE sponges through the ARMv8.2 SHA3 instructions at once, since those
                             operate on 128-bit vectors holding two Keccak lanes.</li>
@@ -406,8 +406,8 @@
                         <code>wasm32-unknown-unknown</code>, which has no NEON, so it exercises the
                         <em>portable i64 kernel</em> &mdash; the same code path a non-ARM64 native build
                         takes. Expect it to be several times slower than the figures quoted for Apple
-                        Silicon, and slower again for running inside a JavaScript engine. That the
-                        results still match the native ones bit for bit is the useful part: it is an
+                        Silicon, and slower again for running inside a JavaScript engine. The
+                        results match the native ones bit for bit, which makes this an
                         independent cross-target check of the same arithmetic.</p>
                     </div>
 
