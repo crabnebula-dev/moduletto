@@ -20,3 +20,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Tests, including the NIST ACVP ML-KEM vectors
         run: cargo test --release
+      # The crate is also a cdylib (wasm), so check no_std as an rlib.
+      - name: no_std builds
+        run: |
+          cargo rustc --lib --crate-type rlib --no-default-features
+          cargo rustc --lib --crate-type rlib --no-default-features --features alloc
