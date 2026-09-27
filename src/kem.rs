@@ -1,15 +1,20 @@
-//! ML-KEM-512 (FIPS 203) as a library API.
+//! ML-KEM (FIPS 203) as a library API: ML-KEM-512 and ML-KEM-768.
 //!
 //! This is the int16 path from `examples/kyber_benchmark.rs`: the NEON
 //! backend on aarch64 and the scalar mirror of the pqcrystals reference C
-//! elsewhere, with the inline Keccak. It is the path the ACVP known-answer
-//! tests in `tests/kat/` validate (see `tests/kem_kat.rs`).
+//! elsewhere, with the inline Keccak. The two parameter sets share the code
+//! and differ only in the module rank k and the noise parameter η₁ (the
+//! compression widths du = 10 and dv = 4 are the same for both). The NIST
+//! ACVP vectors in `tests/kat/` validate both (see `tests/kem_kat.rs`).
 //!
-//! Byte encodings follow FIPS 203:
-//! - encapsulation key `ek`: 800 bytes
-//! - decapsulation key `dk`: 1632 bytes
-//! - ciphertext `c`: 768 bytes
-//! - shared secret: 32 bytes
+//! | | [`ml_kem_512`] | [`ml_kem_768`] |
+//! |---|---:|---:|
+//! | NIST security category | 1 | 3 |
+//! | k, η₁ | 2, 3 | 3, 2 |
+//! | encapsulation key `ek` | 800 | 1184 |
+//! | decapsulation key `dk` | 1632 | 2400 |
+//! | ciphertext `c` | 768 | 1088 |
+//! | shared secret | 32 | 32 |
 //!
 //! The deterministic `*_derand` functions take the randomness explicitly
 //! (FIPS 203 `ML-KEM.KeyGen_internal` and `ML-KEM.Encaps_internal`). The
@@ -22,13 +27,7 @@
 extern crate std;
 use std::vec::Vec;
 
-/// Size of an ML-KEM-512 encapsulation key.
-pub const EK_BYTES: usize = 800;
-/// Size of an ML-KEM-512 decapsulation key.
-pub const DK_BYTES: usize = 1632;
-/// Size of an ML-KEM-512 ciphertext.
-pub const CT_BYTES: usize = 768;
-/// Size of the shared secret.
+/// Size of the shared secret for every parameter set.
 pub const SS_BYTES: usize = 32;
 
 /// Why an input was rejected.
@@ -45,51 +44,101 @@ pub enum KemError {
 impl core::fmt::Display for KemError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            KemError::Length => f.write_str("ML-KEM-512: wrong input length"),
-            KemError::InvalidKey => f.write_str("ML-KEM-512: invalid key"),
+            KemError::Length => f.write_str("ML-KEM: wrong input length"),
+            KemError::InvalidKey => f.write_str("ML-KEM: invalid key"),
         }
     }
 }
 
 impl std::error::Error for KemError {}
 
-/// FIPS 203 `ML-KEM.KeyGen_internal(d, z)`: returns `(ek, dk)`.
-pub fn keygen_derand(d: &[u8; 32], z: &[u8; 32]) -> ([u8; EK_BYTES], [u8; DK_BYTES]) {
-    let sk = kyber_keygen_neon(d, z);
-    (ek_to_bytes(&sk.pk), dk_to_bytes(&sk))
+macro_rules! parameter_set {
+    ($module:ident, $name:literal, $k:literal) => {
+        #[doc = concat!($name, " (FIPS 203).")]
+        pub mod $module {
+            use super::{KemError, SS_BYTES};
+
+            /// Size of an encapsulation key.
+            pub const EK_BYTES: usize = super::ek_len($k);
+            /// Size of a decapsulation key.
+            pub const DK_BYTES: usize = super::dk_len($k);
+            /// Size of a ciphertext.
+            pub const CT_BYTES: usize = super::ct_len($k);
+
+            /// FIPS 203 `ML-KEM.KeyGen_internal(d, z)`: returns `(ek, dk)`.
+            pub fn keygen_derand(d: &[u8; 32], z: &[u8; 32]) -> ([u8; EK_BYTES], [u8; DK_BYTES]) {
+                let sk = super::keygen::<$k>(d, z);
+                // unwrap: the encoders produce exactly these lengths.
+                (
+                    super::ek_to_bytes(&sk.pk).try_into().unwrap(),
+                    super::dk_to_bytes(&sk).try_into().unwrap(),
+                )
+            }
+
+            /// FIPS 203 `ML-KEM.Encaps(ek)` with the message `m` supplied by
+            /// the caller. Performs the encapsulation key check of FIPS 203
+            /// section 7.2. Returns `(ciphertext, shared_secret)`.
+            pub fn encaps_derand(
+                ek: &[u8],
+                m: &[u8; 32],
+            ) -> Result<([u8; CT_BYTES], [u8; SS_BYTES]), KemError> {
+                super::check_ek::<$k>(ek)?;
+                let (ct, ss) = super::encaps::<$k>(&super::ek_from_bytes(ek), m);
+                // unwrap: the encoder produces exactly this length.
+                Ok((super::ct_to_bytes(&ct).try_into().unwrap(), ss))
+            }
+
+            /// FIPS 203 `ML-KEM.Decaps(dk, c)`. Performs the input checks of
+            /// FIPS 203 section 7.3 (lengths and the hash of `ek` inside
+            /// `dk`). A tampered ciphertext yields the implicit-rejection
+            /// key, not an error.
+            pub fn decaps(dk: &[u8], c: &[u8]) -> Result<[u8; SS_BYTES], KemError> {
+                super::check_dk::<$k>(dk)?;
+                if c.len() != CT_BYTES {
+                    return Err(KemError::Length);
+                }
+                Ok(super::decaps::<$k>(&super::dk_from_bytes(dk), &super::ct_from_bytes(c)))
+            }
+
+            /// FIPS 203 section 7.2 encapsulation key check on its own.
+            pub fn check_encapsulation_key(ek: &[u8]) -> Result<(), KemError> {
+                super::check_ek::<$k>(ek)
+            }
+
+            /// FIPS 203 section 7.3 decapsulation key check on its own.
+            pub fn check_decapsulation_key(dk: &[u8]) -> Result<(), KemError> {
+                super::check_dk::<$k>(dk)
+            }
+        }
+    };
 }
 
-/// FIPS 203 `ML-KEM.Encaps(ek)` with the message `m` supplied by the caller.
-/// Performs the encapsulation key check of FIPS 203 section 7.2.
-/// Returns `(ciphertext, shared_secret)`.
-pub fn encaps_derand(ek: &[u8], m: &[u8; 32]) -> Result<([u8; CT_BYTES], [u8; SS_BYTES]), KemError> {
-    check_ek(ek)?;
-    let (ct, ss) = kyber_encaps_neon(&ek_from_bytes(ek), m);
-    Ok((ct_to_bytes(&ct), ss))
-}
+parameter_set!(ml_kem_512, "ML-KEM-512", 2);
+parameter_set!(ml_kem_768, "ML-KEM-768", 3);
 
-/// FIPS 203 `ML-KEM.Decaps(dk, c)`. Performs the input checks of FIPS 203
-/// section 7.3 (lengths and the hash of `ek` inside `dk`). A tampered
-/// ciphertext yields the implicit-rejection key, not an error.
-pub fn decaps(dk: &[u8], c: &[u8]) -> Result<[u8; SS_BYTES], KemError> {
-    if dk.len() != DK_BYTES || c.len() != CT_BYTES {
-        return Err(KemError::Length);
-    }
-    if sha3_256(&[&dk[768..1568]]) != dk[1568..1600] {
-        return Err(KemError::InvalidKey);
-    }
-    Ok(kyber_decaps_neon(&dk_from_bytes(dk), &ct_from_bytes(c)))
+const fn ek_len(k: usize) -> usize {
+    384 * k + 32
+}
+const fn dk_len(k: usize) -> usize {
+    768 * k + 96
+}
+const fn ct_len(k: usize) -> usize {
+    320 * k + 128
+}
+/// η₁: 3 for ML-KEM-512, 2 for ML-KEM-768 and ML-KEM-1024.
+const fn eta1(k: usize) -> u32 {
+    if k == 2 { 3 } else { 2 }
 }
 
 /// FIPS 203 section 7.2: length check and the modulus check
 /// `ByteEncode12(ByteDecode12(ek)) == ek`, which holds exactly when every
 /// 12-bit coefficient is below q.
-fn check_ek(ek: &[u8]) -> Result<(), KemError> {
-    if ek.len() != EK_BYTES {
+fn check_ek<const K: usize>(ek: &[u8]) -> Result<(), KemError> {
+    if ek.len() != ek_len(K) {
         return Err(KemError::Length);
     }
     let mut bad = 0u16;
-    for chunk in ek[..384 * KYBER_K].chunks_exact(3) {
+    for chunk in ek[..384 * K].chunks_exact(3) {
         let (b0, b1, b2) = (chunk[0] as u16, chunk[1] as u16, chunk[2] as u16);
         let c0 = b0 | ((b1 & 0x0f) << 8);
         let c1 = (b1 >> 4) | (b2 << 4);
@@ -99,9 +148,21 @@ fn check_ek(ek: &[u8]) -> Result<(), KemError> {
     if bad == 0 { Ok(()) } else { Err(KemError::InvalidKey) }
 }
 
+/// FIPS 203 section 7.3: length check and `H(ek) == h` for the `ek` and `h`
+/// embedded in `dk`.
+fn check_dk<const K: usize>(dk: &[u8]) -> Result<(), KemError> {
+    if dk.len() != dk_len(K) {
+        return Err(KemError::Length);
+    }
+    let (ek, h) = (&dk[384 * K..768 * K + 32], &dk[768 * K + 32..768 * K + 64]);
+    if sha3_256(&[ek]) != h {
+        return Err(KemError::InvalidKey);
+    }
+    Ok(())
+}
+
 use crate::ntt::KYBER_Q;
 
-const KYBER_K: usize = 2; // ML-KEM-512
 
 
 // ── Inline Keccak-f[1600] (XKCP plain-64-bit, non-bebigokimisa variant) ──────
@@ -747,39 +808,32 @@ unsafe fn intt_i16_neon(r: &mut [i16; 256]) {
 
 type Poly16 = [i16; 256];
 
-struct SecretKey16 {
-    s_hat: [Poly16; KYBER_K],
-    pk: PublicKey16,
+struct SecretKey16<const K: usize> {
+    s_hat: [Poly16; K],
+    pk: PublicKey16<K>,
     z: [u8; 32],
 }
 
-struct PublicKey16 {
-    t_hat: [Poly16; KYBER_K],
+struct PublicKey16<const K: usize> {
+    t_hat: [Poly16; K],
     rho: [u8; 32],
     h_pk: [u8; 32],
 }
 
-struct Ciphertext16 {
-    u_enc: [[u8; 320]; KYBER_K],
+struct Ciphertext16<const K: usize> {
+    u_enc: [[u8; 320]; K],
     v_enc: [u8; 128],
 }
 
-// ── i16 KEM helper functions ──────────────────────────────────────────────────
-
-// Uniform sampling in NTT domain [0,q-1], stored as i16.
-// ── FIPS 203 byte encodings (ML-KEM-512) ─────────────────────────────────────
+// ── FIPS 203 byte encodings ───────────────────────────────────────────────────
 //
-//   ek = ByteEncode12(t_hat) ‖ rho                     (384k + 32 =  800 bytes)
-//   dk = ByteEncode12(s_hat) ‖ ek ‖ H(ek) ‖ z          (768 + 800 + 64 = 1632)
-//   c  = ByteEncode10(Compress10(u)) ‖ ByteEncode4(Compress4(v))     (768)
+//   ek = ByteEncode12(t_hat) ‖ rho                     (384k + 32)
+//   dk = ByteEncode12(s_hat) ‖ ek ‖ H(ek) ‖ z          (768k + 96)
+//   c  = ByteEncode10(Compress10(u)) ‖ ByteEncode4(Compress4(v))     (320k + 128)
 //
 // These are needed only at the external interface; the KEM keeps polynomials in
 // its own representation internally. They are what the ACVP known-answer tests
 // constrain.
-
-const ML_KEM_512_EK_BYTES: usize = 800;
-const ML_KEM_512_DK_BYTES: usize = 1632;
-const ML_KEM_512_CT_BYTES: usize = 768;
 
 /// ByteEncode12 of one polynomial: 2 coefficients -> 3 bytes, canonical [0, q).
 fn poly_tobytes_i16(p: &Poly16, out: &mut [u8]) {
@@ -807,63 +861,63 @@ fn poly_frombytes_i16(bytes: &[u8]) -> Poly16 {
     r
 }
 
-fn ek_to_bytes(pk: &PublicKey16) -> [u8; ML_KEM_512_EK_BYTES] {
-    let mut out = [0u8; ML_KEM_512_EK_BYTES];
-    for i in 0..KYBER_K {
+fn ek_to_bytes<const K: usize>(pk: &PublicKey16<K>) -> Vec<u8> {
+    let mut out = std::vec![0u8; ek_len(K)];
+    for i in 0..K {
         poly_tobytes_i16(&pk.t_hat[i], &mut out[384 * i..384 * (i + 1)]);
     }
-    out[384 * KYBER_K..].copy_from_slice(&pk.rho);
+    out[384 * K..].copy_from_slice(&pk.rho);
     out
 }
 
-fn ek_from_bytes(ek: &[u8]) -> PublicKey16 {
-    let t_hat: [Poly16; KYBER_K] =
+fn ek_from_bytes<const K: usize>(ek: &[u8]) -> PublicKey16<K> {
+    let t_hat: [Poly16; K] =
         std::array::from_fn(|i| poly_frombytes_i16(&ek[384 * i..384 * (i + 1)]));
     let mut rho = [0u8; 32];
-    rho.copy_from_slice(&ek[384 * KYBER_K..384 * KYBER_K + 32]);
+    rho.copy_from_slice(&ek[384 * K..384 * K + 32]);
     let h_pk = sha3_256(&[ek]);
     PublicKey16 { t_hat, rho, h_pk }
 }
 
-fn dk_to_bytes(sk: &SecretKey16) -> [u8; ML_KEM_512_DK_BYTES] {
-    let mut out = [0u8; ML_KEM_512_DK_BYTES];
-    for i in 0..KYBER_K {
+fn dk_to_bytes<const K: usize>(sk: &SecretKey16<K>) -> Vec<u8> {
+    let mut out = std::vec![0u8; dk_len(K)];
+    for i in 0..K {
         poly_tobytes_i16(&sk.s_hat[i], &mut out[384 * i..384 * (i + 1)]);
     }
-    let ek = ek_to_bytes(&sk.pk);
-    out[768..768 + 800].copy_from_slice(&ek);
-    out[1568..1600].copy_from_slice(&sk.pk.h_pk);
-    out[1600..1632].copy_from_slice(&sk.z);
+    out[384 * K..768 * K + 32].copy_from_slice(&ek_to_bytes(&sk.pk));
+    out[768 * K + 32..768 * K + 64].copy_from_slice(&sk.pk.h_pk);
+    out[768 * K + 64..].copy_from_slice(&sk.z);
     out
 }
 
-fn dk_from_bytes(dk: &[u8]) -> SecretKey16 {
-    let s_hat: [Poly16; KYBER_K] =
+fn dk_from_bytes<const K: usize>(dk: &[u8]) -> SecretKey16<K> {
+    let s_hat: [Poly16; K] =
         std::array::from_fn(|i| poly_frombytes_i16(&dk[384 * i..384 * (i + 1)]));
-    let pk = ek_from_bytes(&dk[768..1568]);
+    let pk = ek_from_bytes(&dk[384 * K..768 * K + 32]);
     let mut z = [0u8; 32];
-    z.copy_from_slice(&dk[1600..1632]);
+    z.copy_from_slice(&dk[768 * K + 64..768 * K + 96]);
     SecretKey16 { s_hat, pk, z }
 }
 
-fn ct_to_bytes(ct: &Ciphertext16) -> [u8; ML_KEM_512_CT_BYTES] {
-    let mut out = [0u8; ML_KEM_512_CT_BYTES];
-    for i in 0..KYBER_K {
-        out[320 * i..320 * (i + 1)].copy_from_slice(&ct.u_enc[i]);
+fn ct_to_bytes<const K: usize>(ct: &Ciphertext16<K>) -> Vec<u8> {
+    let mut out = Vec::with_capacity(ct_len(K));
+    for u in &ct.u_enc {
+        out.extend_from_slice(u);
     }
-    out[320 * KYBER_K..].copy_from_slice(&ct.v_enc);
+    out.extend_from_slice(&ct.v_enc);
     out
 }
 
-fn ct_from_bytes(c: &[u8]) -> Ciphertext16 {
-    let mut u_enc = [[0u8; 320]; KYBER_K];
+fn ct_from_bytes<const K: usize>(c: &[u8]) -> Ciphertext16<K> {
+    let mut u_enc = [[0u8; 320]; K];
     for (i, u) in u_enc.iter_mut().enumerate() {
         u.copy_from_slice(&c[320 * i..320 * (i + 1)]);
     }
     let mut v_enc = [0u8; 128];
-    v_enc.copy_from_slice(&c[320 * KYBER_K..]);
+    v_enc.copy_from_slice(&c[320 * K..]);
     Ciphertext16 { u_enc, v_enc }
 }
+
 
 // ── ARMv8.2 SHA3 two-way Keccak ──────────────────────────────────────────────
 //
@@ -1134,18 +1188,48 @@ fn gen_poly_uniform_pair_i16(rho: &[u8; 32], a: (u8, u8), b: (u8, u8)) -> (Poly1
     )
 }
 
-fn gen_matrix_i16(rho: &[u8; 32]) -> [[Poly16; KYBER_K]; KYBER_K] {
-    #[cfg(target_arch = "aarch64")]
-    {
-        // KYBER_K = 2, so the four entries pair up row by row.
-        let (a00, a01) = gen_poly_uniform_pair_i16(rho, (0, 0), (0, 1));
-        let (a10, a11) = gen_poly_uniform_pair_i16(rho, (1, 0), (1, 1));
-        return [[a00, a01], [a10, a11]];
+fn gen_matrix_i16<const K: usize>(rho: &[u8; 32]) -> [[Poly16; K]; K] {
+    // Entries are sampled two at a time in row-major order (the two-way
+    // Keccak on aarch64; one at a time elsewhere). With k = 3 the ninth
+    // entry is sampled alone.
+    let mut a = [[[0i16; 256]; K]; K];
+    let n = K * K;
+    let mut idx = 0;
+    while idx + 1 < n {
+        let (i0, j0) = (idx / K, idx % K);
+        let (i1, j1) = ((idx + 1) / K, (idx + 1) % K);
+        let (p, q) = gen_poly_uniform_pair_i16(rho, (i0 as u8, j0 as u8), (i1 as u8, j1 as u8));
+        a[i0][j0] = p;
+        a[i1][j1] = q;
+        idx += 2;
     }
-    #[cfg(not(target_arch = "aarch64"))]
-    {
-        std::array::from_fn(|i| std::array::from_fn(|j| gen_poly_uniform_i16(rho, i as u8, j as u8)))
+    if idx < n {
+        a[idx / K][idx % K] = gen_poly_uniform_i16(rho, (idx / K) as u8, (idx % K) as u8);
     }
+    a
+}
+
+/// K polynomials from CBD(η) with nonces `nonce0 .. nonce0 + K`, sampled two
+/// at a time where possible.
+fn sample_vec_i16<const K: usize>(seed: &[u8; 32], nonce0: u8, eta: u32) -> [Poly16; K] {
+    let mut out = [[0i16; 256]; K];
+    let mut i = 0;
+    while i + 1 < K {
+        let (n0, n1) = (nonce0 + i as u8, nonce0 + i as u8 + 1);
+        let (a, b) = if eta == 3 {
+            prf_cbd3_pair_i16(seed, n0, n1)
+        } else {
+            prf_cbd_pair_i16(seed, n0, n1)
+        };
+        out[i] = a;
+        out[i + 1] = b;
+        i += 2;
+    }
+    if i < K {
+        let n = nonce0 + i as u8;
+        out[i] = if eta == 3 { prf_cbd3_i16(seed, n) } else { prf_cbd_i16(seed, n) };
+    }
+    out
 }
 
 // CBD(η=2): returns centered coefficients as i16.
@@ -1266,25 +1350,25 @@ fn prf_cbd3_pair_i16(sigma: &[u8; 32], n0: u8, n1: u8) -> (Poly16, Poly16) {
 }
 
 // matvec: t_hat = A_hat * v_hat (NTT domain, Montgomery basemul).
-fn matvec_i16(a: &[[Poly16; KYBER_K]; KYBER_K], v: &[Poly16; KYBER_K]) -> [Poly16; KYBER_K] {
+fn matvec_i16<const K: usize>(a: &[[Poly16; K]; K], v: &[Poly16; K]) -> [Poly16; K] {
     std::array::from_fn(|i| {
         let mut acc = [0i16; 256];
-        for j in 0..KYBER_K { basemul_acc_i16(&mut acc, &a[i][j], &v[j]); }
+        for j in 0..K { basemul_acc_i16(&mut acc, &a[i][j], &v[j]); }
         acc
     })
 }
 
-fn matvec_transpose_i16(a: &[[Poly16; KYBER_K]; KYBER_K], v: &[Poly16; KYBER_K]) -> [Poly16; KYBER_K] {
+fn matvec_transpose_i16<const K: usize>(a: &[[Poly16; K]; K], v: &[Poly16; K]) -> [Poly16; K] {
     std::array::from_fn(|i| {
         let mut acc = [0i16; 256];
-        for j in 0..KYBER_K { basemul_acc_i16(&mut acc, &a[j][i], &v[j]); }
+        for j in 0..K { basemul_acc_i16(&mut acc, &a[j][i], &v[j]); }
         acc
     })
 }
 
-fn inner_product_i16(a: &[Poly16; KYBER_K], b: &[Poly16; KYBER_K]) -> Poly16 {
+fn inner_product_i16<const K: usize>(a: &[Poly16; K], b: &[Poly16; K]) -> Poly16 {
     let mut acc = [0i16; 256];
-    for j in 0..KYBER_K { basemul_acc_i16(&mut acc, &a[j], &b[j]); }
+    for j in 0..K { basemul_acc_i16(&mut acc, &a[j], &b[j]); }
     acc
 }
 
@@ -1434,27 +1518,25 @@ fn msg_decode_i16(p: &Poly16) -> [u8; 32] {
     msg
 }
 
-// ── i16 NEON Kyber KEM ───────────────────────────────────────────────────────
+// ── i16 ML-KEM, generic over the module rank k ──────────────────────────────
 
-fn kyber_keygen_neon(d: &[u8; 32], z: &[u8; 32]) -> SecretKey16 {
+fn keygen<const K: usize>(d: &[u8; 32], z: &[u8; 32]) -> SecretKey16<K> {
     // FIPS 203 Alg. 13 (K-PKE.KeyGen): (rho, sigma) = G(d ‖ k). The parameter
     // byte k is the domain separation added in final FIPS 203; round-3 Kyber
     // omitted it. Omitting it produces a non-conformant key.
-    let g = sha3_512(&[d.as_slice(), &[KYBER_K as u8]]);
+    let g = sha3_512(&[d.as_slice(), &[K as u8]]);
     let mut rho = [0u8; 32]; let mut sigma = [0u8; 32];
     rho.copy_from_slice(&g[..32]); sigma.copy_from_slice(&g[32..]);
 
-    let a_hat = gen_matrix_i16(&rho);
+    let a_hat = gen_matrix_i16::<K>(&rho);
 
-    // Nonces 0,1 for s and 2,3 for e — sampled two lanes at a time.
-    let (s0, s1) = prf_cbd3_pair_i16(&sigma, 0, 1);
-    let (e0, e1) = prf_cbd3_pair_i16(&sigma, 2, 3);
+    // Nonces 0..k for s and k..2k for e, both with η₁.
     let to_ntt = |mut p: Poly16| { ntt_i16(&mut p); poly_reduce_i16(&mut p); p };
-    let s_hat: [Poly16; KYBER_K] = [to_ntt(s0), to_ntt(s1)];
-    let e_hat: [Poly16; KYBER_K] = [to_ntt(e0), to_ntt(e1)];
+    let s_hat = sample_vec_i16::<K>(&sigma, 0, eta1(K)).map(to_ntt);
+    let e_hat = sample_vec_i16::<K>(&sigma, K as u8, eta1(K)).map(to_ntt);
 
     let mut t_hat = matvec_i16(&a_hat, &s_hat);
-    for i in 0..KYBER_K {
+    for i in 0..K {
         // poly_tomont: multiply each coeff by R mod q = fqmul(c, R²modq=1353)
         // Matches reference C poly_tomont(pkpv.vec[i]) after basemul_acc_montgomery.
         for c in t_hat[i].iter_mut() { *c = fqmul_s(*c, 1353); }
@@ -1462,8 +1544,8 @@ fn kyber_keygen_neon(d: &[u8; 32], z: &[u8; 32]) -> SecretKey16 {
         poly_reduce_i16(&mut t_hat[i]);
     }
 
-    let mut pk_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 384 + 32);
-    for i in 0..KYBER_K {
+    let mut pk_bytes: Vec<u8> = Vec::with_capacity(ek_len(K));
+    for i in 0..K {
         let mut enc = [0u8; 384];
         poly_to_bytes_i16(&t_hat[i], &mut enc);
         pk_bytes.extend_from_slice(&enc);
@@ -1471,8 +1553,7 @@ fn kyber_keygen_neon(d: &[u8; 32], z: &[u8; 32]) -> SecretKey16 {
     pk_bytes.extend_from_slice(&rho);
     let h_pk = sha3_256(&[&pk_bytes]);
 
-    // Invert NTT on s to store as coefficients (for decaps u*s computation)
-    // Actually store s_hat directly (NTT domain) as the reference does
+    // s_hat stays in the NTT domain, as the reference does.
     SecretKey16 {
         s_hat,
         pk: PublicKey16 { t_hat, rho, h_pk },
@@ -1480,24 +1561,22 @@ fn kyber_keygen_neon(d: &[u8; 32], z: &[u8; 32]) -> SecretKey16 {
     }
 }
 
-fn kyber_encaps_neon(pk: &PublicKey16, m: &[u8; 32]) -> (Ciphertext16, [u8; 32]) {
+fn encaps<const K: usize>(pk: &PublicKey16<K>, m: &[u8; 32]) -> (Ciphertext16<K>, [u8; 32]) {
     // FIPS 203 Alg. 17 (ML-KEM.Encaps_internal): (K, r) = G(m ‖ H(ek)).
     // Round-3 Kyber hashed m first; FIPS 203 uses it directly.
     let g = sha3_512(&[m.as_slice(), pk.h_pk.as_slice()]);
     let mut k_bar = [0u8; 32]; let mut r_seed = [0u8; 32];
     k_bar.copy_from_slice(&g[..32]); r_seed.copy_from_slice(&g[32..]);
 
-    let a_hat = gen_matrix_i16(&pk.rho);
-    // Nonces 0,1 for r; 2,3 for e1; 4 for e2 — paired where possible.
-    let (r0, r1) = prf_cbd3_pair_i16(&r_seed, 0, 1);   // eta1 = 3
-    let (e1a, e1b) = prf_cbd_pair_i16(&r_seed, 2, 3);  // eta2 = 2
+    let a_hat = gen_matrix_i16::<K>(&pk.rho);
+    // Nonces 0..k for r (η₁), k..2k for e1 (η₂ = 2), 2k for e2 (η₂).
     let to_ntt = |mut p: Poly16| { ntt_i16(&mut p); poly_reduce_i16(&mut p); p };
-    let r_hat: [Poly16; KYBER_K] = [to_ntt(r0), to_ntt(r1)];
-    let e1_poly: [Poly16; KYBER_K] = [e1a, e1b];
-    let e2 = prf_cbd_i16(&r_seed, 4);
+    let r_hat = sample_vec_i16::<K>(&r_seed, 0, eta1(K)).map(to_ntt);
+    let e1_poly = sample_vec_i16::<K>(&r_seed, K as u8, 2);
+    let e2 = prf_cbd_i16(&r_seed, 2 * K as u8);
 
     let mut u_hat = matvec_transpose_i16(&a_hat, &r_hat);
-    let u_poly: [Poly16; KYBER_K] = std::array::from_fn(|i| {
+    let u_poly: [Poly16; K] = std::array::from_fn(|i| {
         poly_reduce_i16(&mut u_hat[i]);
         let mut tmp = u_hat[i];
         intt_i16(&mut tmp);
@@ -1516,25 +1595,20 @@ fn kyber_encaps_neon(pk: &PublicKey16, m: &[u8; 32]) -> (Ciphertext16, [u8; 32])
     v_poly = poly_add_i16(&v_poly, &msg_encode_i16(m));
     poly_reduce_i16(&mut v_poly);
 
-    let u_enc: [[u8; 320]; KYBER_K] = std::array::from_fn(|i| {
+    let u_enc: [[u8; 320]; K] = std::array::from_fn(|i| {
         let mut buf = [0u8; 320];
         poly_compress_i16(&u_poly[i], 10, &mut buf); buf
     });
     let mut v_enc = [0u8; 128];
     poly_compress_i16(&v_poly, 4, &mut v_enc);
 
-    let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
-    for ue in &u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
-    ct_bytes.extend_from_slice(&v_enc);
     // FIPS 203: the shared secret is K as produced by G. Round-3 Kyber applied
     // a final KDF(K ‖ H(c)); FIPS 203 removed it.
-    let ss = k_bar;
-
-    (Ciphertext16 { u_enc, v_enc }, ss)
+    (Ciphertext16 { u_enc, v_enc }, k_bar)
 }
 
-fn kyber_decaps_neon(sk: &SecretKey16, ct: &Ciphertext16) -> [u8; 32] {
-    let u_hat: [Poly16; KYBER_K] = std::array::from_fn(|i| {
+fn decaps<const K: usize>(sk: &SecretKey16<K>, ct: &Ciphertext16<K>) -> [u8; 32] {
+    let u_hat: [Poly16; K] = std::array::from_fn(|i| {
         let mut p = poly_decompress_i16(&ct.u_enc[i], 10);
         ntt_i16(&mut p); poly_reduce_i16(&mut p); p
     });
@@ -1546,10 +1620,10 @@ fn kyber_decaps_neon(sk: &SecretKey16, ct: &Ciphertext16) -> [u8; 32] {
     poly_reduce_i16(&mut su_hat);
 
     let m_prime = msg_decode_i16(&poly_sub_i16(&v_poly, &su_hat));
-    let (ct_prime, ss_prime) = kyber_encaps_neon(&sk.pk, &m_prime);
+    let (ct_prime, ss_prime) = encaps(&sk.pk, &m_prime);
 
     let mut eq: u8 = 0xFF;
-    for i in 0..KYBER_K {
+    for i in 0..K {
         for (a, b) in ct.u_enc[i].iter().zip(ct_prime.u_enc[i].iter()) {
             eq &= !(a ^ b).wrapping_neg();
         }
@@ -1558,12 +1632,10 @@ fn kyber_decaps_neon(sk: &SecretKey16, ct: &Ciphertext16) -> [u8; 32] {
         eq &= !(a ^ b).wrapping_neg();
     }
 
-    let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
-    for ue in &ct.u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
-    ct_bytes.extend_from_slice(&ct.v_enc);
     // FIPS 203 Alg. 18 (ML-KEM.Decaps_internal): the implicit-rejection key is
     // J(z ‖ c) = SHAKE256(z ‖ c, 32) over the whole ciphertext — not a SHA3-256
     // of z with a hash of c, which is what round-3 Kyber did.
+    let ct_bytes = ct_to_bytes(ct);
     let mut ss_reject = [0u8; 32];
     shake256(&[sk.z.as_slice(), &ct_bytes], &mut ss_reject);
 
@@ -1572,4 +1644,3 @@ fn kyber_decaps_neon(sk: &SecretKey16, ct: &Ciphertext16) -> [u8; 32] {
     for i in 0..32 { ss[i] = (ss_prime[i] & mask) | (ss_reject[i] & !mask); }
     ss
 }
-
