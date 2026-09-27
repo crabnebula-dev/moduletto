@@ -250,10 +250,21 @@ impl<const N: i64> ModN<N> {
         true // NEON is always available on aarch64
     }
 
-    /// Check if x86 AVX2 is available on this platform
+    /// Check if x86 AVX2 is available on this platform.
+    ///
+    /// With `std` this is detected at run time. Without `std` there is no
+    /// run-time detection, so it reports whether the build targets AVX2
+    /// (for example `-C target-feature=+avx2` or `-C target-cpu=native`).
     #[cfg(target_arch = "x86_64")]
     pub fn has_avx2() -> bool {
-        is_x86_feature_detected!("avx2")
+        #[cfg(feature = "std")]
+        {
+            std::is_x86_feature_detected!("avx2")
+        }
+        #[cfg(not(feature = "std"))]
+        {
+            cfg!(target_feature = "avx2")
+        }
     }
 
     #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
