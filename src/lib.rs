@@ -50,6 +50,10 @@ pub use modn::ModN;
 pub use modn_ct::ConstantTimeOps;
 pub use ntt::{NTTPoly, KyberCoeff, KYBER_Q, KYBER_N};
 
+// ML-KEM-512 (FIPS 203) key encapsulation.
+#[cfg(feature = "std")]
+pub mod kem;
+
 // WebAssembly bindings
 #[cfg(feature = "wasm")]
 pub mod wasm;

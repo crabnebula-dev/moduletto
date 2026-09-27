@@ -1,6 +1,26 @@
 # Moduletto Native Smart
 
-Optimized rust-based modular arithmetic and NTT for lattice cryptography. Includes a full Kyber-512 (ML-KEM-512) implementation with ARM64 NEON-accelerated int16 NTT in constant time, as WASM, and with optional no_std.
+Optimized rust-based modular arithmetic and NTT for lattice cryptography. Includes ML-KEM-512 and ML-KEM-768 (FIPS 203) with an ARM64 NEON-accelerated int16 NTT in constant time, as WASM, and with optional no_std.
+
+## ML-KEM API
+
+`moduletto::kem::ml_kem_512` and `moduletto::kem::ml_kem_768` (feature `std`, on by default):
+
+```rust
+use moduletto::kem::ml_kem_768;
+
+// d, z and m come from a CSPRNG; the crate has no RNG dependency.
+let (ek, dk) = ml_kem_768::keygen_derand(&d, &z);
+let (c, k_sender) = ml_kem_768::encaps_derand(&ek, &m)?; // checks ek (FIPS 203 7.2)
+let k_receiver = ml_kem_768::decaps(&dk, &c)?;            // checks dk (FIPS 203 7.3)
+assert_eq!(k_sender, k_receiver);
+```
+
+`tests/kem_kat.rs` runs the NIST ACVP vectors for both parameter sets against
+these entry points: 25 keyGen, 25 encapsulation and 10 decapsulation cases
+each, plus 10 encapsulation-key and 10 decapsulation-key checks each.
+`tests/kat/extract.mjs` regenerates the vector files from an ACVP-Server
+checkout.
 
 ## Conformance
 
@@ -295,4 +315,25 @@ cargo +nightly fuzz run fuzz_ct_arith fuzz/artifacts/fuzz_ct_arith/<crash-file>
 
 ## License
 
-Polyform-Noncommercial-1.0.0
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
+
+at your option.
+
+Releases before this change were published under the PolyForm Noncommercial License 1.0.0.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
+
+### Third-party material
+
+- The inline Keccak-f[1600] in `src/kem.rs` is translated from the XKCP
+  (eXtended Keccak Code Package), released to the public domain.
+- The int16 NTT constants and structure follow the pqcrystals Kyber reference
+  implementation (CC0-1.0 or Apache-2.0).
+- `tests/kat/` holds NIST ACVP-Server test vectors (a US Government work).
