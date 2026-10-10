@@ -22,6 +22,27 @@ each, plus 10 encapsulation-key and 10 decapsulation-key checks each.
 `tests/kat/extract.mjs` regenerates the vector files from an ACVP-Server
 checkout.
 
+## Security
+
+- **Randomness.** The `*_derand` functions take `d`, `z` and `m` from the
+  caller, who must draw them from a CSPRNG. With the `getrandom` feature,
+  `keygen()` and `encaps(ek)` draw them from the operating system.
+- **Secrets in memory.** Seeds, noise polynomials and the re-encryption state
+  of decapsulation are wiped with `zeroize`, and the internal key structs wipe
+  themselves on drop. The returned decapsulation key and shared secret are
+  plain arrays: wrap them in `zeroize::Zeroizing` or wipe them yourself.
+- **Timing.** Decapsulation has no secret-dependent branch, memory access or
+  division. The implicit-rejection comparison and selection go through
+  `subtle`, and the rounding divisions by q in message decoding and
+  compression are fixed-point multiplications (the KyberSlash pattern). The
+  `ct_*` operations in `modn_ct` and `ntt` are branchless by construction.
+  None of this has been verified against compiled machine code with a tool
+  such as dudect or ctgrind, and on cores without a fixed-latency multiplier
+  (some 32-bit microcontrollers) the multiply itself can leak.
+- **Reviews.** Security reviews and their remediation are recorded in
+  [audits/](audits/). Report vulnerabilities as described in
+  [SECURITY.md](SECURITY.md).
+
 ## Conformance
 
 The Kyber-512 implementation in `examples/kyber_benchmark.rs` is validated against
@@ -123,15 +144,19 @@ A standalone Kyber-512 KEM implementation featuring:
 
 ### Hybrid Post-Quantum Encryption (`examples/hybrid_pq_aes.rs`)
 
-A complete Kyber-512 + AES-256-GCM hybrid encryption system demonstrating the standard post-quantum key encapsulation pattern used in TLS 1.3 and Signal's PQXDH:
+ML-KEM-512 + AES-256-GCM, the key-encapsulation pattern used in TLS 1.3 and
+Signal's PQXDH, built on the library's `moduletto::kem::ml_kem_512`:
 
 ```bash
 cargo run --release --example hybrid_pq_aes
 ```
 
-1. Kyber-512 KEM establishes a 256-bit shared secret (768-byte ciphertext)
+1. ML-KEM-512 establishes a 256-bit shared secret (768-byte ciphertext); `d`,
+   `z`, `m` and the GCM nonce come from the OS CSPRNG
 2. AES-256-GCM encrypts arbitrary plaintext with the shared secret
-3. Tamper detection via GCM authentication tag + Kyber IND-CCA2 implicit rejection
+3. Tamper detection: a changed AES ciphertext fails the GCM tag; a changed
+   KEM ciphertext yields the implicit-rejection key, so the tag fails too
+4. Decapsulation keys and shared secrets are held in `Zeroizing` and wiped on drop
 
 ## Usage
 
@@ -183,9 +208,10 @@ cargo test --lib --no-default-features --release
 
 | Feature | Description |
 |---------|-------------|
-| `std` (default) | Standard library support |
+| `std` (default) | Standard library support; enables the `kem` module |
 | `alloc` | Heap allocation + `libm` for no_std math |
 | `wasm` | WebAssembly bindings via `wasm-bindgen` |
+| `getrandom` | `kem::*::keygen()` and `encaps(ek)` backed by the OS CSPRNG |
 
 ```toml
 # Default (std)
@@ -199,6 +225,9 @@ moduletto = { version = "0.1", default-features = false, features = ["alloc"] }
 
 # WebAssembly
 moduletto = { version = "0.1", features = ["wasm"] }
+
+# ML-KEM with OS randomness
+moduletto = { version = "0.1", features = ["getrandom"] }
 ```
 
 ## Architecture
@@ -222,7 +251,10 @@ Kyber's modulus q=3329 fits in 12 bits. Using i16 coefficients with ARM64 NEON i
 
 ## Formal Verification (`proofs/`)
 
-The constant-time arithmetic is formally verified using Coq (Rocq 9.1) with an accompanying OCaml test harness.
+The arithmetic behind the constant-time layer is proved functionally correct
+in Coq (Rocq 9.1), with an accompanying OCaml test harness. The proofs cover
+what the branchless formulas compute, not the timing of compiled code (see
+[Security](#security)).
 
 ### Prerequisites
 
@@ -254,14 +286,17 @@ make ocaml
 make clean
 ```
 
-A successful `make coq` means every theorem has been machine-checked by the Rocq kernel -- no axioms are used except one `Admitted` lemma for NTT linearity (the inductive list proof is mechanical but lengthy; it is covered by the OCaml runtime tests instead).
+A successful `make coq` means every theorem has been machine-checked by the
+Rocq kernel. The development uses no axioms and has no `Admitted` lemmas.
+Build outputs (`.vo`, `.glob`, …) are not committed; `make coq` regenerates
+them.
 
 ### Coq proofs
 
 - **`ModularArithmetic.v`** -- Correctness of branchless CT add/sub/neg (equivalence to branching versions, correctness mod N, range closure, algebraic properties)
 - **`BarrettReduction.v`** -- Barrett reduction produces `x mod N` for inputs < N^2, with quotient approximation bounds and Kyber-3329 instantiation
 - **`ConstantTime.v`** -- ct_select, ct_swap (XOR swap), ct_lt, ct_is_zero: functional correctness of all branchless primitives
-- **`NTT.v`** -- Kyber parameter verification: zeta=17 is a primitive 256th root of unity mod 3329, 128^(-1) = 3303 mod 3329, primality of 3329
+- **`NTT.v`** -- Kyber parameter verification: zeta=17 is a primitive 256th root of unity mod 3329, 128^(-1) = 3303 mod 3329, primality of 3329; additivity of the NTT evaluation map (proved by induction over the coefficient list)
 
 ### OCaml test harness
 

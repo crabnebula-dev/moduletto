@@ -4,14 +4,21 @@
 //! operations that are resistant to timing attacks. These should be used when
 //! operating on secret data in cryptographic contexts.
 //!
-//! # Security Guarantees
+//! # Security properties
 //!
-//! All operations in this module:
-//! - Execute in constant time (no data-dependent branches)
-//! - Have constant memory access patterns
-//! - Do not leak secrets through timing side channels
+//! All operations in this module are written so that:
+//! - the control flow does not depend on the operand values,
+//! - the memory access pattern does not depend on the operand values,
+//! - every conditional is a masked select, never a branch.
 //!
-//! Side-channel resistance is enforced by the [`subtle`] crate, which places an
+//! The Coq proofs in `proofs/` establish that these branchless formulas
+//! compute the right values. They say nothing about the timing of compiled
+//! code, which also depends on the target: 64-bit multiply is fixed-latency
+//! on every mainstream 64-bit core but not on some 32-bit microcontrollers.
+//! No machine-level timing verification (for example dudect or ctgrind) has
+//! been run.
+//!
+//! Side-channel resistance is supported by the [`subtle`] crate, which places an
 //! optimisation barrier on every `Choice` so the compiler cannot fold branchless
 //! code back into a branch. The crate is built with its `core_hint_black_box`
 //! feature, which implements that barrier as `core::hint::black_box` — an empty

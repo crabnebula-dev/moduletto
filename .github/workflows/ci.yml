@@ -7,6 +7,8 @@ on:
 permissions:
   contents: read
 
+# Actions are pinned to commit SHAs; Dependabot (.github/dependabot.yml)
+# proposes updates.
 jobs:
   test:
     # x86-64 runs the scalar int16 path; macOS arm64 runs the NEON path.
@@ -16,12 +18,32 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Tests, including the NIST ACVP ML-KEM vectors
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # stable
+        with:
+          toolchain: stable
+      - name: Tests, including the NIST ACVP ML-KEM vectors (release)
         run: cargo test --release
+      - name: Tests with overflow checks (debug)
+        run: cargo test
+      - name: Tests with the getrandom feature
+        run: cargo test --release --features getrandom
       # The crate is also a cdylib (wasm), so check no_std as an rlib.
       - name: no_std builds
         run: |
           cargo rustc --lib --crate-type rlib --no-default-features
           cargo rustc --lib --crate-type rlib --no-default-features --features alloc
+      - name: Examples build
+        run: cargo build --release --examples
+
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # stable
+        with:
+          toolchain: stable
+      - name: Known-vulnerability audit of Cargo.lock
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit

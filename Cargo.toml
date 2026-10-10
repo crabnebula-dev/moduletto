@@ -7,7 +7,7 @@ license = "MIT OR Apache-2.0"
 description = "Optimized modular arithmetic and NTT for lattice cryptography — i64 scalar, i16 NEON, and Kyber KEM"
 keywords = ["modular", "ntt", "kyber", "cryptography", "performance"]
 categories = ["mathematics", "no-std", "cryptography", "embedded"]
-repository = "https://github.com/denjell/circlecimal"
+repository = "https://github.com/crabnebula-dev/moduletto"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -15,6 +15,13 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Constant-time primitives with inline asm barrier (side-channel hardening)
 subtle = { version = "2.6", default-features = false, features = ["core_hint_black_box"] }
+
+# Wipes secret key material and the intermediates of key generation,
+# encapsulation and decapsulation (src/kem.rs)
+zeroize = { version = "1.8", default-features = false }
+
+# Optional OS randomness for `kem::*::keygen()` and `kem::*::encaps(ek)`
+getrandom = { version = "0.4", optional = true }
 
 # Optional WebAssembly support
 wasm-bindgen = { version = "0.2", optional = true }
@@ -36,6 +43,8 @@ default = ["std"]
 std = ["alloc"]
 alloc = ["libm"]
 wasm = ["wasm-bindgen", "web-sys"]
+# RNG-backed `keygen()` / `encaps(ek)` in `kem`, drawing from the OS CSPRNG
+getrandom = ["dep:getrandom", "std"]
 
 [profile.dev]
 panic = "abort"
