@@ -298,15 +298,18 @@ type-check and the OCaml harness runs its 27,185 checks.
 | `cargo test --release`, `cargo test`, `--features getrandom` | pass (43 unit, 5 integration, 7 doc) |
 | no_std rlib builds; `wasm32-unknown-unknown` check | pass |
 | `cargo run --release --example valgrind_ct` (native smoke test, no Valgrind) | ok |
-| dudect, final run | table above |
+| Valgrind memcheck run in CI (ubuntu-latest, x86-64 scalar path, run 38032710089) | no errors, exit 0 |
+| dudect, final run on Apple M5 | table above |
+| dudect in CI (ubuntu-latest x86-64): all gated benches | \|t\| ≤ 2.7; CPU multiply bench −3.1 with DIT n/a, so no zero-operand effect on that core |
 | ML-KEM-768 timing before/after | +1–2% |
-| CI jobs `constant-time` and `proofs` | added; first run happens on push |
+| CI jobs `test`, `audit`, `constant-time` | pass on first push |
+| CI job `proofs` | failed on first push: the Rocq 9.1 image has `rocq compile` but no `coqc`; Makefile now uses whichever exists |
 
 ### Residual risks after the follow-up
 
-- The Valgrind check has not been executed on the reviewer's machine; its
-  first run is the CI run on push. Memcheck also cannot see operand-dependent
-  arithmetic timing, which is what DIT addresses.
+- The Valgrind check cannot run on the reviewer's machine (Apple Silicon); it
+  ran clean in CI on x86-64. Memcheck cannot see operand-dependent arithmetic
+  timing, which is what DIT addresses.
 - `with_dit` is a no-op without `std` (no safe FEAT_DIT detection) and off
   AArch64. x86-64 has no user-settable equivalent; Intel's DOITM is a
   kernel-controlled MSR. The dudect results above are for Apple M5 only.
