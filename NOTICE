@@ -1,12 +1,13 @@
 moduletto
 Optimized modular arithmetic, NTT and ML-KEM (FIPS 203) for lattice cryptography
 
-Copyright (c) 2026 Daniel Thompson-Yvetot
+Copyright (c) 2026 CrabNebula Ltd and Daniel Thompson-Yvetot
 
-This product is free and open-source software stewarded by CrabNebula Ltd
-(Malta, C 103590) in the sense of Regulation (EU) 2024/2847, Article 3(14).
-See COMPLIANCE.md for the steward statement and SECURITY.md for how to
-report a vulnerability.
+CrabNebula Ltd (Malta, C 103590) holds the copyright together with the
+original author, Daniel Thompson-Yvetot, and stewards this product as free
+and open-source software in the sense of Regulation (EU) 2024/2847,
+Article 3(14). See COMPLIANCE.md for the steward statement and SECURITY.md
+for how to report a vulnerability.
 
 ------------------------------------------------------------------------------
 Licence
