@@ -2,6 +2,8 @@
 //!
 //! This module provides `ModN<const N: i64>` - a compile-time fixed modulus type
 //! that offers significantly better performance than runtime modulus operations.
+//! The modulus must lie in `1..2^31`; the constructors enforce this at compile
+//! time.
 //!
 //! # Key Advantages
 //!
@@ -52,6 +54,15 @@ pub struct ModN<const N: i64> {
 }
 
 impl<const N: i64> ModN<N> {
+    /// Compile-time check of the modulus. `ModN` promises its arithmetic for
+    /// moduli in `1..2^31`: above that, products of two canonical values
+    /// overflow `i64`. Referenced from the constructors so a type with an
+    /// out-of-range `N` fails to compile instead of wrapping silently.
+    const VALID_MODULUS: () = assert!(
+        N > 0 && N < (1 << 31),
+        "ModN<N>: the modulus must be positive and below 2^31"
+    );
+
     /// Creates a new modular value, automatically reducing to canonical form.
     ///
     /// # Examples
@@ -65,8 +76,15 @@ impl<const N: i64> ModN<N> {
     /// let b = ModN::<7>::new(-4);  // -4 mod 7 = 3
     /// assert_eq!(b.value(), 3);
     /// ```
+    ///
+    /// A modulus of 2^31 or more does not compile:
+    ///
+    /// ```compile_fail
+    /// use moduletto::ModN;
+    /// let _ = ModN::<2147483648>::new(1);
+    /// ```
     pub const fn new(value: i64) -> Self {
-        assert!(N > 0, "Modulus must be positive");
+        let () = Self::VALID_MODULUS;
 
         let mut v = value % N;
         if v < 0 {
@@ -87,11 +105,13 @@ impl<const N: i64> ModN<N> {
 
     /// Creates zero (additive identity).
     pub const fn zero() -> Self {
+        let () = Self::VALID_MODULUS;
         Self { value: 0 }
     }
 
     /// Creates one (multiplicative identity).
     pub const fn one() -> Self {
+        let () = Self::VALID_MODULUS;
         Self { value: 1 }
     }
 

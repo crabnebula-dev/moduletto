@@ -1,8 +1,16 @@
 //! # Moduletto
 //!
 //! Optimised modular arithmetic and NTT for lattice cryptography: a
-//! compile-time-fixed-modulus scalar type, a formally verified constant-time
-//! layer, and a Kyber-parameter NTT with an ARM64 NEON backend.
+//! compile-time-fixed-modulus scalar type, a constant-time layer whose
+//! arithmetic is proved correct in Coq, a Kyber-parameter NTT with an ARM64
+//! NEON backend, and ML-KEM-512/768 (FIPS 203) in [`kem`].
+//!
+//! The constant-time claims in this crate describe the shape of the code (no
+//! secret-dependent branch, memory access or division), measured with dudect
+//! and checked under Valgrind (`examples/ct_dudect.rs`,
+//! `examples/valgrind_ct.rs`). On AArch64 the ML-KEM entry points also set
+//! `PSTATE.DIT`, because the multiplier's latency is operand-dependent
+//! without it; see [`dit`] and `README.md`, "Security".
 //!
 //! ## Benchmark results (Apple M5, Criterion, q = 3329, n = 256)
 //!
@@ -43,6 +51,7 @@
 #![allow(incomplete_features)]
 
 mod modn;
+pub mod dit;
 pub mod modn_ct;
 pub mod ntt;
 
@@ -50,13 +59,17 @@ pub use modn::ModN;
 pub use modn_ct::ConstantTimeOps;
 pub use ntt::{NTTPoly, KyberCoeff, KYBER_Q, KYBER_N};
 
-// ML-KEM-512 (FIPS 203) key encapsulation.
+// ML-KEM-512 and ML-KEM-768 (FIPS 203) key encapsulation.
 #[cfg(feature = "std")]
 pub mod kem;
 
 // WebAssembly bindings
 #[cfg(feature = "wasm")]
 pub mod wasm;
+
+// Valgrind client requests for the ctgrind-style check (examples/valgrind_ct.rs).
+#[cfg(feature = "valgrind-ct")]
+pub mod valgrind;
 
 #[cfg(test)]
 mod tests {

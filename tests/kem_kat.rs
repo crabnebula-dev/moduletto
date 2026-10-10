@@ -123,6 +123,12 @@ fn input_checks() {
     let mut c2 = c;
     c2[0] ^= 1;
     assert_ne!(ml_kem_768::decaps(&dk, &c2).unwrap(), k);
+    #[cfg(feature = "getrandom")]
+    {
+        let (ek, dk) = ml_kem_768::keygen().unwrap();
+        let (c, k) = ml_kem_768::encaps(&ek).unwrap();
+        assert_eq!(ml_kem_768::decaps(&dk, &c).unwrap(), k);
+    }
     assert_eq!(ml_kem_768::decaps(&dk, &c[..1087]), Err(KemError::Length));
     // Tampered H(ek) inside dk is rejected.
     let mut dk2 = dk;
@@ -131,4 +137,47 @@ fn input_checks() {
     // A 512 key is not a 768 key.
     let (ek512, _) = ml_kem_512::keygen_derand(&[1; 32], &[2; 32]);
     assert_eq!(ml_kem_768::encaps_derand(&ek512, &[0; 32]), Err(KemError::Length));
+}
+
+/// FIPS 203 implicit rejection, checked through the public API against an
+/// independent SHAKE256: for every single-bit change to a ciphertext the
+/// result is exactly J(z ‖ c'), never the real key and never a mix of the two.
+///
+/// Regression test for the audit finding in `audits/`: the previous mask
+/// derivation leaked bits of K' whenever the changed bit was not bit 0.
+#[test]
+fn implicit_rejection_matches_shake256_for_every_bit() {
+    use sha3::digest::{ExtendableOutput, Update, XofReader};
+
+    fn j(z: &[u8], c: &[u8]) -> [u8; 32] {
+        let mut h = sha3::Shake256::default();
+        h.update(z);
+        h.update(c);
+        let mut out = [0u8; 32];
+        h.finalize_xof().read(&mut out);
+        out
+    }
+
+    fn check(set: &Set, dk_len: usize, ct_len: usize) {
+        let d = [0x11u8; 32];
+        let z = [0x22u8; 32];
+        let (ek, dk) = (set.keygen)(&d, &z);
+        assert_eq!(dk.len(), dk_len);
+        assert_eq!(&dk[dk_len - 32..], &z);
+        let (c, k) = (set.encaps)(&ek, &[0x33u8; 32]).unwrap();
+        assert_eq!(c.len(), ct_len);
+        assert_eq!((set.decaps)(&dk, &c).unwrap(), k);
+        for pos in [0usize, 1, 2, 159, ct_len - 129, ct_len - 128, ct_len - 1] {
+            for bit in 0..8 {
+                let mut c2 = c.clone();
+                c2[pos] ^= 1 << bit;
+                let got = (set.decaps)(&dk, &c2).unwrap();
+                assert_eq!(got, j(&z, &c2), "byte {pos} bit {bit}: not J(z || c')");
+                assert_ne!(got, k);
+            }
+        }
+    }
+
+    check(&ML_KEM_512, ml_kem_512::DK_BYTES, ml_kem_512::CT_BYTES);
+    check(&ML_KEM_768, ml_kem_768::DK_BYTES, ml_kem_768::CT_BYTES);
 }

@@ -419,9 +419,11 @@ fn kyber_decaps_hw(sk: &SecretKey, ct: &Ciphertext, consts: &NTTConstants) -> [u
     let su_hat = inner_product(&sk.s_hat, &u_hat, consts);
     let m_prime = msg_decode(&v_poly.sub(&su_hat.intt()));
     let (ct_prime, ss_prime) = kyber_encaps_hw(&sk.pk, &m_prime, consts);
-    let mut eq: u8 = 0xFF;
-    for i in 0..KYBER_K { for (a, b) in ct.u_enc[i].iter().zip(ct_prime.u_enc[i].iter()) { eq &= !(a ^ b).wrapping_neg(); } }
-    for (a, b) in ct.v_enc.iter().zip(ct_prime.v_enc.iter()) { eq &= !(a ^ b).wrapping_neg(); }
+    // All-or-nothing rejection mask; see kyber_decaps for the reasoning.
+    let mut diff: u8 = 0;
+    for i in 0..KYBER_K { for (a, b) in ct.u_enc[i].iter().zip(ct_prime.u_enc[i].iter()) { diff |= a ^ b; } }
+    for (a, b) in ct.v_enc.iter().zip(ct_prime.v_enc.iter()) { diff |= a ^ b; }
+    let reject = ((diff as u16).wrapping_neg() >> 8) as u8;
     let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
     for ue in &ct.u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
     ct_bytes.extend_from_slice(&ct.v_enc);
@@ -430,9 +432,8 @@ fn kyber_decaps_hw(sk: &SecretKey, ct: &Ciphertext, consts: &NTTConstants) -> [u
     // of z with a hash of c, which is what round-3 Kyber did.
     let mut ss_reject = [0u8; 32];
     shake256_hw(&[sk.z.as_slice(), &ct_bytes], &mut ss_reject);
-    let mask = eq;
     let mut ss = [0u8; 32];
-    for i in 0..32 { ss[i] = (ss_prime[i] & mask) | (ss_reject[i] & !mask); }
+    for i in 0..32 { ss[i] = (ss_prime[i] & !reject) | (ss_reject[i] & reject); }
     ss
 }
 
@@ -569,7 +570,13 @@ fn poly_to_bytes(p: &NTTPoly, out: &mut [u8; 384]) {
 /// See `poly_compress_i16` for why this is grouped rather than bit-at-a-time.
 #[inline(always)]
 fn compress_coeff_i64(x: i64, d: u32) -> u16 {
-    (((x * (1i64 << d) + KYBER_Q / 2) / KYBER_Q) & ((1i64 << d) - 1)) as u16
+    // No `/ q` on secret data (KyberSlash); see src/kem.rs::compress_coeff.
+    let t = x as u64;
+    match d {
+        10 => (((((t << 10) + 1665) * 1_290_167) >> 32) & 0x3ff) as u16,
+        4 => (((((t << 4) + 1665) * 80_635) >> 28) & 0xf) as u16,
+        _ => (((x * (1i64 << d) + KYBER_Q / 2) / KYBER_Q) & ((1i64 << d) - 1)) as u16,
+    }
 }
 
 fn poly_compress_generic(p: &NTTPoly, d: u32, out: &mut [u8]) {
@@ -667,8 +674,8 @@ fn msg_decode(p: &NTTPoly) -> [u8; 32] {
     let mut msg = [0u8; 32];
     for i in 0..32 {
         for j in 0..8 {
-            let v = p.coeffs[8 * i + j].value();
-            let bit = ((2 * v + KYBER_Q / 2) / KYBER_Q) & 1;
+            let v = p.coeffs[8 * i + j].value() as u32; // canonical, [0, q)
+            let bit = (((v << 1) + 1665) * 80_635 >> 28) & 1; // round(2v/q) mod 2, no division
             msg[i] |= (bit as u8) << j;
         }
     }
@@ -867,15 +874,20 @@ fn kyber_decaps(sk: &SecretKey, ct: &Ciphertext, consts: &NTTConstants) -> [u8; 
 
     let (ct_prime, ss_prime) = kyber_encaps_inner(&sk.pk, &m_prime, consts);
 
-    let mut eq: u8 = 0xFF;
+    // OR every byte difference into one accumulator, then derive the mask
+    // with a widening negate: 0xFF iff any byte differs. (The earlier
+    // per-byte `!(a ^ b).wrapping_neg()` equals `(a ^ b) - 1` and leaked
+    // bits of K' for most differences; see audits/.)
+    let mut diff: u8 = 0;
     for i in 0..KYBER_K {
         for (a, b) in ct.u_enc[i].iter().zip(ct_prime.u_enc[i].iter()) {
-            eq &= !(a ^ b).wrapping_neg();
+            diff |= a ^ b;
         }
     }
     for (a, b) in ct.v_enc.iter().zip(ct_prime.v_enc.iter()) {
-        eq &= !(a ^ b).wrapping_neg();
+        diff |= a ^ b;
     }
+    let reject = ((diff as u16).wrapping_neg() >> 8) as u8;
 
     let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
     for ue in &ct.u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
@@ -886,10 +898,9 @@ fn kyber_decaps(sk: &SecretKey, ct: &Ciphertext, consts: &NTTConstants) -> [u8; 
     let mut ss_reject = [0u8; 32];
     shake256(&[sk.z.as_slice(), &ct_bytes], &mut ss_reject);
 
-    let mask = eq;
     let mut ss = [0u8; 32];
     for i in 0..32 {
-        ss[i] = (ss_prime[i] & mask) | (ss_reject[i] & !mask);
+        ss[i] = (ss_prime[i] & !reject) | (ss_reject[i] & reject);
     }
     ss
 }
@@ -1825,8 +1836,14 @@ fn poly_to_bytes_i16(p: &Poly16, out: &mut [u8; 384]) {
 fn compress_coeff(c: i16, d: u32) -> u16 {
     let q = KYBER_Q as i32;
     let mut t = c as i32;
-    t += (t >> 15) & q; // canonicalise: if t < 0, t += q
-    (((((t as u32) << d) + (q as u32 / 2)) / q as u32) & ((1u32 << d) - 1)) as u16
+    t += (t >> 31) & q; // canonicalise: if t < 0, t += q
+    // No `/ q` on secret data (KyberSlash); see src/kem.rs::compress_coeff.
+    let t = t as u64;
+    match d {
+        10 => (((((t << 10) + 1665) * 1_290_167) >> 32) & 0x3ff) as u16,
+        4 => (((((t << 4) + 1665) * 80_635) >> 28) & 0xf) as u16,
+        _ => ((((t << d) + (q as u64 / 2)) / q as u64) & ((1u64 << d) - 1)) as u16,
+    }
 }
 
 /// Bit-at-a-time reference packing, kept for `d` values outside Kyber-512's set
@@ -1927,9 +1944,12 @@ fn msg_decode_i16(p: &Poly16) -> [u8; 32] {
     let mut msg = [0u8; 32];
     for i in 0..32 {
         for j in 0..8 {
+            // Input lies in (-q, 2q); two masked steps bring it to [0, q).
             let mut t = p[8*i + j] as i32;
-            t += (t >> 15) & 3329;  // make non-negative
-            let bit = ((((t << 1) + 3329/2) / 3329) & 1) as u8;
+            t += (t >> 31) & 3329;
+            t -= 3329;
+            t += (t >> 31) & 3329;
+            let bit = (((((t as u32) << 1) + 1665) * 80_635 >> 28) & 1) as u8; // no division
             msg[i] |= bit << j;
         }
     }
@@ -2050,15 +2070,20 @@ fn kyber_decaps_neon(sk: &SecretKey16, ct: &Ciphertext16) -> [u8; 32] {
     let m_prime = msg_decode_i16(&poly_sub_i16(&v_poly, &su_hat));
     let (ct_prime, ss_prime) = kyber_encaps_neon(&sk.pk, &m_prime);
 
-    let mut eq: u8 = 0xFF;
+    // OR every byte difference into one accumulator, then derive the mask
+    // with a widening negate: 0xFF iff any byte differs. (The earlier
+    // per-byte `!(a ^ b).wrapping_neg()` equals `(a ^ b) - 1` and leaked
+    // bits of K' for most differences; see audits/.)
+    let mut diff: u8 = 0;
     for i in 0..KYBER_K {
         for (a, b) in ct.u_enc[i].iter().zip(ct_prime.u_enc[i].iter()) {
-            eq &= !(a ^ b).wrapping_neg();
+            diff |= a ^ b;
         }
     }
     for (a, b) in ct.v_enc.iter().zip(ct_prime.v_enc.iter()) {
-        eq &= !(a ^ b).wrapping_neg();
+        diff |= a ^ b;
     }
+    let reject = ((diff as u16).wrapping_neg() >> 8) as u8;
 
     let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
     for ue in &ct.u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
@@ -2069,9 +2094,8 @@ fn kyber_decaps_neon(sk: &SecretKey16, ct: &Ciphertext16) -> [u8; 32] {
     let mut ss_reject = [0u8; 32];
     shake256(&[sk.z.as_slice(), &ct_bytes], &mut ss_reject);
 
-    let mask = eq;
     let mut ss = [0u8; 32];
-    for i in 0..32 { ss[i] = (ss_prime[i] & mask) | (ss_reject[i] & !mask); }
+    for i in 0..32 { ss[i] = (ss_prime[i] & !reject) | (ss_reject[i] & reject); }
     ss
 }
 

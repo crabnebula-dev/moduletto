@@ -6,7 +6,13 @@
 #   make ocaml   - Compile and run OCaml test harness
 #   make clean   - Remove build artifacts
 
+# Rocq 9 ships `rocq compile`; older installs (and the Homebrew formula) also
+# provide the `coqc` wrapper. Use whichever is on PATH.
+ifneq ($(shell command -v rocq 2>/dev/null),)
+COQC = rocq compile
+else
 COQC = coqc
+endif
 COQFLAGS = -Q . Moduletto
 
 OCAMLOPT = ocamlfind ocamlopt
