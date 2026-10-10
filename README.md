@@ -392,7 +392,10 @@ Licensed under either of
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or <https://www.apache.org/licenses/LICENSE-2.0>)
 - MIT license ([LICENSE-MIT](LICENSE-MIT) or <https://opensource.org/licenses/MIT>)
 
-at your option.
+at your option. [NOTICE](NOTICE) carries the attribution notices that the
+Apache License asks redistributors to preserve, the full list of third-party
+material and dependencies with their licences, the licensing history, and a
+development disclosure.
 
 Releases before this change were published under the PolyForm Noncommercial License 1.0.0.
 
