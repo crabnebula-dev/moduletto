@@ -63,7 +63,7 @@ A manufacturer that integrates moduletto into a product it places on the market 
 | Secret handling | Wiped with `zeroize` inside the crate; returned keys and shared secrets are plain arrays the caller must wipe |
 | Security reviews | `audits/`, with reviewed commit and timestamp |
 | Dependencies | `subtle` (BSD-3-Clause), `zeroize` (Apache-2.0 OR MIT), optional `getrandom` (MIT OR Apache-2.0) |
-| Third-party material | XKCP Keccak (public domain); pqcrystals Kyber reference constants (CC0-1.0 or Apache-2.0); NIST ACVP vectors (US Government work) |
+| Third-party material | XKCP Keccak (public domain); pqcrystals Kyber reference constants (CC0-1.0 or Apache-2.0); NIST ACVP vectors (US Government work). Full attributions, dependency licences and licensing history in `NOTICE`. |
 | Vulnerability reports | GitHub private vulnerability reporting on this repository |
 
 ## What would change this

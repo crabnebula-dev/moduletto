@@ -1,0 +1,115 @@
+moduletto
+Optimized modular arithmetic, NTT and ML-KEM (FIPS 203) for lattice cryptography
+
+Copyright (c) 2026 Daniel Thompson-Yvetot
+
+This product is free and open-source software stewarded by CrabNebula Ltd
+(Malta, C 103590) in the sense of Regulation (EU) 2024/2847, Article 3(14).
+See COMPLIANCE.md for the steward statement and SECURITY.md for how to
+report a vulnerability.
+
+------------------------------------------------------------------------------
+Licence
+------------------------------------------------------------------------------
+
+Licensed under either of
+
+  * Apache License, Version 2.0 (LICENSE-APACHE or
+    https://www.apache.org/licenses/LICENSE-2.0)
+  * MIT License (LICENSE-MIT or https://opensource.org/licenses/MIT)
+
+at your option. When you redistribute this product or a derivative under the
+Apache License, Section 4(d) requires you to include a readable copy of the
+attribution notices in this NOTICE file.
+
+Licensing history: the repository was first published on 2026-04-01 under the
+PolyForm Noncommercial License 1.0.0 and relicensed under MIT OR Apache-2.0 on
+2026-09-27 (commit 8e41fbc). Releases made before that date remain available
+under the PolyForm terms they were published with; everything from that commit
+on is MIT OR Apache-2.0.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in this product, as defined in the Apache License,
+is dual licensed as above without additional terms or conditions.
+
+------------------------------------------------------------------------------
+Third-party material included in this product
+------------------------------------------------------------------------------
+
+1. Keccak-f[1600] permutation (src/kem.rs, examples/kyber_benchmark.rs)
+   Translated to Rust from the eXtended Keccak Code Package (XKCP),
+   https://github.com/XKCP/XKCP, files KeccakP-1600-opt64.c,
+   KeccakP-1600-64.macros and KeccakP-1600-unrolling.macros, by the Keccak
+   team (Guido Bertoni, Joan Daemen, Seth Hoffert, Michaël Peeters, Gilles
+   Van Assche, Ronny Van Keer). Released by its authors to the public domain
+   (CC0 1.0 Universal).
+
+2. Kyber / ML-KEM reference structure and constants (src/kem.rs, src/ntt.rs,
+   examples/kyber_benchmark.rs)
+   The int16 Montgomery NTT structure, the twiddle-factor table ZETAS, the
+   Barrett and Montgomery reduction constants, the compression and message
+   decoding formulas and the CBD samplers follow the pq-crystals Kyber
+   reference implementation, https://github.com/pq-crystals/kyber, by the
+   CRYSTALS-Kyber team (Roberto Avanzi, Joppe Bos, Léo Ducas, Eike Kiltz,
+   Tancrède Lepoint, Vadim Lyubashevsky, John M. Schanck, Peter Schwabe,
+   Gregor Seiler, Damien Stehlé). Licensed under CC0 1.0 Universal or the
+   Apache License, Version 2.0, at the user's option.
+
+3. NIST ACVP test vectors (tests/kat/)
+   Extracted from https://github.com/usnistgov/ACVP-Server,
+   gen-val/json-files/ML-KEM-keyGen-FIPS203 and ML-KEM-encapDecap-FIPS203,
+   by tests/kat/extract.mjs. A work of the United States Government, not
+   subject to copyright protection in the United States (17 U.S.C. § 105).
+   NIST provides it without warranty; the vector files record their source.
+
+4. Algorithm
+   ML-KEM is specified in NIST FIPS 203 (August 2024). This product
+   implements the specification; it has not been validated under FIPS 140-3
+   (CMVP) or any other scheme. No patent assurances are given beyond those in
+   Section 3 of the Apache License.
+
+------------------------------------------------------------------------------
+Dependencies (not included in the source; fetched at build time)
+------------------------------------------------------------------------------
+
+Runtime
+  subtle        BSD-3-Clause              Isis Lovecruft, Henry de Valence
+                https://github.com/dalek-cryptography/subtle
+  zeroize       Apache-2.0 OR MIT         RustCrypto Developers
+                https://github.com/RustCrypto/utils
+
+Optional runtime (behind Cargo features)
+  getrandom     MIT OR Apache-2.0         feature `getrandom`
+                https://github.com/rust-random/getrandom
+  libm          MIT                       feature `alloc` (no_std math)
+                https://github.com/rust-lang/compiler-builtins
+  wasm-bindgen, web-sys
+                MIT OR Apache-2.0         feature `wasm`
+                https://github.com/wasm-bindgen/wasm-bindgen
+
+Development and test only (never in a shipped build)
+  criterion     Apache-2.0 OR MIT         benchmarks
+  sha3          MIT OR Apache-2.0         independent hash for tests and KATs
+  aes-gcm       Apache-2.0 OR MIT         hybrid encryption example
+  dudect-bencher
+                MIT OR Apache-2.0         timing test (examples/ct_dudect.rs)
+
+Each dependency's own licence text accompanies its source in the Cargo
+registry. Cargo.lock pins the exact versions; `cargo audit` runs against the
+RustSec advisory database in CI.
+
+------------------------------------------------------------------------------
+Development disclosure
+------------------------------------------------------------------------------
+
+Parts of this product were written or revised with the assistance of an AI
+system (Claude Mythos 5.1, Anthropic) operating under the direction and
+review of the maintainer. Commits carry a Co-Authored-By trailer where that
+applies. An AI-assisted security review and its remediation are recorded in
+audits/README.md with the reviewed commit and timestamps. That review is not
+a substitute for independent human cryptographic review, and no warranty is
+implied by it.
+
+The formal proofs in proofs/ were machine-checked with Rocq (Coq) 9.1. They
+establish functional correctness of the branchless arithmetic, not the timing
+of compiled code; see README.md, "Security".
