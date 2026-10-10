@@ -36,12 +36,13 @@ Article 64(10)(b) excludes administrative fines against open-source software ste
 - Security reviews and their remediation are recorded in `audits/`, each with the reviewed commit hash and a timestamp. Findings are fixed in the tree before the review is published.
 - The ML-KEM implementation (`src/kem.rs`) is tested against the NIST ACVP vectors for ML-KEM-512 and ML-KEM-768. The tests cover key generation, encapsulation, decapsulation and the FIPS 203 input checks (`tests/kem_kat.rs`). CI runs them on every push and pull request (`.github/workflows/ci.yml`), on x86-64 Linux and on arm64 macOS, so both the scalar and the NEON code paths are tested.
 - Secret-dependent arithmetic uses the branch-free code paths documented in the crate. The Coq proofs in `proofs/` cover the Barrett reduction, the modular arithmetic, the constant-time layer and the NTT. The fuzz targets in `fuzz/` check the NTT and the constant-time arithmetic against reference results.
-- Secret material (seeds, noise, re-encryption state, internal key structs) is wiped with `zeroize`. Decapsulation does not branch on secret data; the implicit-rejection comparison goes through `subtle` and the rounding divisions by q are fixed-point multiplications.
+- Secret material (seeds, noise, Keccak states, re-encryption state, internal key structs) is wiped with `zeroize`, and a stack scrub follows each ML-KEM operation. Decapsulation does not branch on secret data; the implicit-rejection comparison goes through `subtle` and the rounding divisions by q are fixed-point multiplications. On AArch64 the ML-KEM entry points run with `PSTATE.DIT` set.
+- Timing behaviour is checked in CI by a dudect statistical test and a Valgrind-based (ctgrind-style) secret-tracking check; the Rocq proofs are built in CI as well.
 - Dependencies are kept minimal: `subtle` and `zeroize`, plus `getrandom` behind an optional feature. CI runs `cargo audit` against the RustSec advisory database on every push, and Dependabot proposes dependency and GitHub Action updates weekly. Known-vulnerable dependencies are removed or updated when advisories are published.
 
 **Vulnerability handling.**
 
-- Report a vulnerability privately through GitHub's private vulnerability reporting on this repository (Security tab, "Report a vulnerability"). Please do not open a public issue.
+- Report a vulnerability privately through GitHub's private vulnerability reporting on this repository (Security tab, "Report a vulnerability"), or through the channel in CrabNebula's `security.txt` (<https://crabnebula.dev/.well-known/security.txt>: `security@crabnebula.dev`, PGP key, disclosure policy). Please do not open a public issue. `SECURITY.md` in the repository repeats this.
 - CrabNebula acknowledges reports within 5 working days and agrees a disclosure date with the reporter. The default is 90 days after the report, or earlier once a fix is released.
 - Fixes are released as a new version with a security advisory that names the affected versions. The advisory credits the reporter unless they ask otherwise.
 - CrabNebula notifies actively exploited vulnerabilities under Article 14(1), as described above.

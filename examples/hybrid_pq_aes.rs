@@ -77,6 +77,15 @@ impl From<KemError> for HybridError {
     }
 }
 
+impl std::fmt::Display for HybridError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HybridError::Kem(e) => write!(f, "ML-KEM: {e}"),
+            HybridError::Authentication => f.write_str("AES-GCM authentication failed"),
+        }
+    }
+}
+
 /// Encrypt `plaintext` for the holder of `ek`.
 fn hybrid_encrypt(ek: &[u8], plaintext: &[u8]) -> Result<HybridCiphertext, HybridError> {
     // Fresh encapsulation randomness; `encaps_derand` checks ek (FIPS 203 7.2).
@@ -154,7 +163,7 @@ fn main() {
     let mut tampered = ct.clone();
     tampered.aes_ct[0] ^= 1;
     match hybrid_decrypt(&kp, &tampered) {
-        Err(HybridError::Authentication) => println!("   Tampered AES ciphertext rejected"),
+        Err(e @ HybridError::Authentication) => println!("   Tampered AES ciphertext rejected: {e}"),
         other => panic!("tampered AES ciphertext was not rejected: {other:?}"),
     }
 

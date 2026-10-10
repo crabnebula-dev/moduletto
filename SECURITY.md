@@ -11,6 +11,13 @@ Report privately through GitHub's private vulnerability reporting on this
 repository (Security tab, "Report a vulnerability"). Please do not open a
 public issue.
 
+CrabNebula's security contact, PGP key and disclosure policy are published in
+its [security.txt](https://crabnebula.dev/.well-known/security.txt)
+(RFC 9116): email `security@crabnebula.dev`, encryption key at
+<https://crabnebula.dev/.well-known/pgp.txt>, policy at
+<https://crabnebula.dev/vulnerability-disclosure-policy/>. Use that channel if
+you cannot use GitHub's.
+
 - Acknowledgement within 5 working days.
 - Disclosure date agreed with the reporter; default 90 days after the report,
   or earlier once a fix is released.

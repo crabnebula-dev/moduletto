@@ -6,8 +6,11 @@
 //! NEON backend, and ML-KEM-512/768 (FIPS 203) in [`kem`].
 //!
 //! The constant-time claims in this crate describe the shape of the code (no
-//! secret-dependent branch, memory access or division). They are not verified
-//! against compiled machine code; see `README.md`, "Security".
+//! secret-dependent branch, memory access or division), measured with dudect
+//! and checked under Valgrind (`examples/ct_dudect.rs`,
+//! `examples/valgrind_ct.rs`). On AArch64 the ML-KEM entry points also set
+//! `PSTATE.DIT`, because the multiplier's latency is operand-dependent
+//! without it; see [`dit`] and `README.md`, "Security".
 //!
 //! ## Benchmark results (Apple M5, Criterion, q = 3329, n = 256)
 //!
@@ -48,6 +51,7 @@
 #![allow(incomplete_features)]
 
 mod modn;
+pub mod dit;
 pub mod modn_ct;
 pub mod ntt;
 
@@ -62,6 +66,10 @@ pub mod kem;
 // WebAssembly bindings
 #[cfg(feature = "wasm")]
 pub mod wasm;
+
+// Valgrind client requests for the ctgrind-style check (examples/valgrind_ct.rs).
+#[cfg(feature = "valgrind-ct")]
+pub mod valgrind;
 
 #[cfg(test)]
 mod tests {

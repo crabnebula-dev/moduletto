@@ -36,6 +36,48 @@ jobs:
       - name: Examples build
         run: cargo build --release --examples
 
+  constant-time:
+    # Two complementary checks of the secret-dependent paths; see
+    # audits/README.md, "Timing verification".
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # stable
+        with:
+          toolchain: stable
+      - name: Valgrind, ctgrind-style (secrets undefined, no dependent branch or lookup)
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q valgrind
+          cargo build --release --features valgrind-ct --example valgrind_ct
+          valgrind --tool=memcheck --error-exitcode=1 -q \
+            target/release/examples/valgrind_ct
+      - name: dudect statistical timing test
+        # Fails if any benchmark's |max t| exceeds the dudect paper's 4.5
+        # threshold by a margin that shared-runner noise does not produce:
+        # the classes are interleaved at random, so noise lands on both.
+        run: |
+          cargo run --release --example ct_dudect | tee dudect.log
+          # hw_mul64_zero_vs_random measures the CPU with DIT clear and is
+          # expected to report a difference; it is not part of the gate.
+          awk '/max t =/ && !/hw_mul64_zero_vs_random / {
+                 match($0, /max t = [-+][0-9.]+/); t = substr($0, RSTART + 8, RLENGTH - 8) + 0;
+                 if (t < 0) t = -t; if (t > worst) worst = t }
+               END { printf "worst gated |t| = %.3f\n", worst; exit (worst > 10) }' dudect.log
+
+  proofs:
+    # Rocq type-checks the four proof files; the OCaml harness runs its checks.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: coq-community/docker-coq-action@126d4ac196f8133729a1cb0d2aa1ee7106efec58 # v1.5.2
+        with:
+          custom_image: rocq/rocq-prover:9.1.1-ocaml-4.14.2-flambda
+          custom_script: |
+            startGroup "Rocq proofs and OCaml harness"
+              sudo chown -R "$(id -u):$(id -g)" proofs
+              make -C proofs all
+            endGroup
+
   audit:
     runs-on: ubuntu-latest
     steps:

@@ -23,17 +23,25 @@
 //!
 //! # Handling of secrets
 //!
-//! Seeds, noise polynomials and the re-encryption state of decapsulation are
-//! wiped with [`zeroize`] before they go out of scope, and the internal key
-//! structs wipe themselves on drop. Copies the compiler makes on the stack are
-//! outside this crate's control. The decapsulation key and the shared secret
-//! are returned by value as plain arrays: wrap them in
+//! Seeds, noise polynomials, Keccak states and the re-encryption state of
+//! decapsulation are wiped with [`zeroize`] before they go out of scope, and
+//! the internal key structs wipe themselves on drop. Polynomials are
+//! transformed in place rather than copied where the algorithm allows. After
+//! each public operation returns, [`scrub_stack`] overwrites the stack region
+//! the operation used, so spilled registers and temporaries the compiler
+//! placed there are cleared too; that is a best-effort measure (libsodium's
+//! `sodium_stackzero`), not a guarantee. The decapsulation key and the shared
+//! secret are returned by value as plain arrays: wrap them in
 //! [`zeroize::Zeroizing`] or wipe them yourself when you are done.
 //!
 //! Decapsulation never branches on secret data. The ciphertext comparison
 //! that drives implicit rejection goes through [`subtle`], and the rounding
 //! divisions by q in message decoding and compression are fixed-point
 //! multiplications, so no target can lower them to a variable-time divide.
+//! On AArch64 every entry point runs under [`crate::dit::with_dit`]: without
+//! `PSTATE.DIT` the 64-bit multiplier's latency depends on its operands
+//! (measured on Apple M5), which dudect detects in decapsulation. Measured
+//! results are in `audits/README.md`.
 
 #![allow(clippy::needless_range_loop)]
 // Some helpers are used only on aarch64 (NEON) or only on other targets.
@@ -91,12 +99,19 @@ macro_rules! parameter_set {
             /// `d` and `z` must each be 32 bytes from a CSPRNG. The returned
             /// `dk` is secret: wipe it when you are done with it.
             pub fn keygen_derand(d: &[u8; 32], z: &[u8; 32]) -> ([u8; EK_BYTES], [u8; DK_BYTES]) {
-                let sk = super::keygen::<$k>(d, z);
-                let mut ek = [0u8; EK_BYTES];
-                let mut dk = [0u8; DK_BYTES];
-                super::ek_to_bytes(&sk.pk, &mut ek);
-                super::dk_to_bytes(&sk, &mut dk);
-                (ek, dk)
+                crate::dit::with_dit(|| {
+                    let sk = super::keygen::<$k>(d, z);
+                    let mut ek = [0u8; EK_BYTES];
+                    let mut dk = [0u8; DK_BYTES];
+                    super::ek_to_bytes(&sk.pk, &mut ek);
+                    super::dk_to_bytes(&sk, &mut dk);
+                    drop(sk);
+                    super::scrub_stack();
+                    // ek, and the copy of ek ‖ H(ek) inside dk, are public.
+                    super::declassify(&ek);
+                    super::declassify(&dk[384 * $k..768 * $k + 64]);
+                    (ek, dk)
+                })
             }
 
             /// FIPS 203 `ML-KEM.KeyGen()`: draws `d` and `z` from the operating
@@ -129,9 +144,14 @@ macro_rules! parameter_set {
                 m: &[u8; 32],
             ) -> Result<([u8; CT_BYTES], [u8; SS_BYTES]), KemError> {
                 super::check_ek::<$k>(ek)?;
-                let (ct, ss) = super::encaps::<$k>(&super::ek_from_bytes(ek), m);
-                // unwrap: the encoder produces exactly this length.
-                Ok((super::ct_to_bytes(&ct).try_into().unwrap(), ss))
+                Ok(crate::dit::with_dit(|| {
+                    let (ct, ss) = super::encaps::<$k>(&super::ek_from_bytes(ek), m);
+                    super::scrub_stack();
+                    // unwrap: the encoder produces exactly this length.
+                    let c: [u8; CT_BYTES] = super::ct_to_bytes(&ct).try_into().unwrap();
+                    super::declassify(&c);
+                    (c, ss)
+                }))
             }
 
             /// FIPS 203 `ML-KEM.Decaps(dk, c)`. Performs the input checks of
@@ -143,7 +163,11 @@ macro_rules! parameter_set {
                 if c.len() != CT_BYTES {
                     return Err(KemError::Length);
                 }
-                Ok(super::decaps::<$k>(&super::dk_from_bytes(dk), &super::ct_from_bytes(c)))
+                Ok(crate::dit::with_dit(|| {
+                    let ss = super::decaps::<$k>(&super::dk_from_bytes(dk), &super::ct_from_bytes(c));
+                    super::scrub_stack();
+                    ss
+                }))
             }
 
             /// FIPS 203 section 7.2 encapsulation key check on its own.
@@ -165,6 +189,37 @@ parameter_set!(ml_kem_768, "ML-KEM-768", 3);
 #[cfg(feature = "getrandom")]
 fn os_random(buf: &mut [u8]) -> Result<(), KemError> {
     getrandom::fill(buf).map_err(|_| KemError::Randomness)
+}
+
+/// Overwrite the stack region below the caller's frame.
+///
+/// Called by the public entry points right after the KEM operation returns,
+/// from the same frame, so this function's buffer occupies the addresses the
+/// operation's frames just vacated: spilled registers, `.map()` temporaries,
+/// Keccak lanes, array copies the compiler chose to make. 32 KiB covers the
+/// deepest path (ML-KEM-768 decapsulation re-encrypting with a 9-polynomial
+/// matrix) with margin. The write is kept by an optimisation barrier.
+///
+/// This is the `sodium_stackzero` approach and shares its limits: it reaches
+/// only the main stack of this thread, below this frame, and only memory, not
+/// registers that the OS or a signal handler may have saved elsewhere.
+#[inline(never)]
+fn scrub_stack() {
+    const BYTES: usize = 32 * 1024;
+    let mut buf = core::mem::MaybeUninit::<[u8; BYTES]>::uninit();
+    let p = buf.as_mut_ptr() as *mut u8;
+    // SAFETY: `p` points to `BYTES` writable bytes owned by this frame.
+    unsafe { core::ptr::write_bytes(p, 0, BYTES) };
+    core::sync::atomic::compiler_fence(core::sync::atomic::Ordering::SeqCst);
+    core::hint::black_box(p);
+}
+
+/// Mark derived-but-public data as defined for the ctgrind-style check.
+/// A no-op unless the `valgrind-ct` feature is enabled.
+#[inline(always)]
+fn declassify<T: ?Sized>(_x: &T) {
+    #[cfg(feature = "valgrind-ct")]
+    crate::valgrind::declassify(_x);
 }
 
 const fn ek_len(k: usize) -> usize {
@@ -436,6 +491,7 @@ fn keccak_sponge(rate: usize, inputs: &[&[u8]], domain: u8, output: &mut [u8]) {
             keccak_f1600(&mut s);
         }
     }
+    s.zeroize();
 }
 
 /// Single-lane incremental XOF: absorb once, then squeeze rate-sized blocks on
@@ -445,6 +501,12 @@ struct ShakeStream {
     s: [u64; 25],
     rate: usize,
     permute_pending: bool,
+}
+
+impl Drop for ShakeStream {
+    fn drop(&mut self) {
+        self.s.zeroize();
+    }
 }
 
 impl ShakeStream {
@@ -1096,6 +1158,16 @@ mod keccak_x2 {
         permute_pending: bool,
     }
 
+    impl Drop for ShakeX2 {
+        fn drop(&mut self) {
+            for lane in self.s.iter_mut() {
+                // SAFETY: an all-zero bit pattern is a valid uint64x2_t; the
+                // volatile write is not elided.
+                unsafe { core::ptr::write_volatile(lane, core::mem::zeroed()) };
+            }
+        }
+    }
+
     impl ShakeX2 {
         /// Absorb one short message per lane and apply the padding rule.
         ///
@@ -1120,6 +1192,8 @@ mod keccak_x2 {
                 let pair = [a0[i], a1[i]];
                 s[i] = vld1q_u64(pair.as_ptr());
             }
+            zeroize::Zeroize::zeroize(&mut a0);
+            zeroize::Zeroize::zeroize(&mut a1);
             f1600_x2(&mut s);
 
             Self { s, rate, permute_pending: false }
@@ -1435,6 +1509,12 @@ fn poly_add_i16(a: &Poly16, b: &Poly16) -> Poly16 {
     std::array::from_fn(|i| a[i].wrapping_add(b[i]))
 }
 
+fn poly_add_in_place_i16(a: &mut Poly16, b: &Poly16) {
+    for (x, y) in a.iter_mut().zip(b.iter()) {
+        *x = x.wrapping_add(*y);
+    }
+}
+
 fn poly_sub_i16(a: &Poly16, b: &Poly16) -> Poly16 {
     std::array::from_fn(|i| a[i].wrapping_sub(b[i]))
 }
@@ -1607,14 +1687,21 @@ fn keygen<const K: usize>(d: &[u8; 32], z: &[u8; 32]) -> SecretKey16<K> {
     let mut rho = [0u8; 32]; let mut sigma = [0u8; 32];
     rho.copy_from_slice(&g[..32]); sigma.copy_from_slice(&g[32..]);
     g.zeroize();
+    // ρ seeds the public matrix and is published in ek; its rejection
+    // sampling is variable-time by design (FIPS 203 SampleNTT).
+    declassify(&rho);
 
     let a_hat = gen_matrix_i16::<K>(&rho);
 
-    // Nonces 0..k for s and k..2k for e, both with η₁.
-    let to_ntt = |mut p: Poly16| { ntt_i16(&mut p); poly_reduce_i16(&mut p); p };
-    let s_hat = sample_vec_i16::<K>(&sigma, 0, eta1(K)).map(to_ntt);
-    let mut e_hat = sample_vec_i16::<K>(&sigma, K as u8, eta1(K)).map(to_ntt);
+    // Nonces 0..k for s and k..2k for e, both with η₁. Transformed in place:
+    // no copies of the noise polynomials.
+    let mut s_hat = sample_vec_i16::<K>(&sigma, 0, eta1(K));
+    let mut e_hat = sample_vec_i16::<K>(&sigma, K as u8, eta1(K));
     sigma.zeroize();
+    for p in s_hat.iter_mut().chain(e_hat.iter_mut()) {
+        ntt_i16(p);
+        poly_reduce_i16(p);
+    }
 
     let mut t_hat = matvec_i16(&a_hat, &s_hat);
     for i in 0..K {
@@ -1654,43 +1741,43 @@ fn encaps<const K: usize>(pk: &PublicKey16<K>, m: &[u8; 32]) -> (Ciphertext16<K>
 
     let a_hat = gen_matrix_i16::<K>(&pk.rho);
     // Nonces 0..k for r (η₁), k..2k for e1 (η₂ = 2), 2k for e2 (η₂).
-    let to_ntt = |mut p: Poly16| { ntt_i16(&mut p); poly_reduce_i16(&mut p); p };
-    let mut r_hat = sample_vec_i16::<K>(&r_seed, 0, eta1(K)).map(to_ntt);
+    let mut r_hat = sample_vec_i16::<K>(&r_seed, 0, eta1(K));
     let mut e1_poly = sample_vec_i16::<K>(&r_seed, K as u8, 2);
     let mut e2 = prf_cbd_i16(&r_seed, 2 * K as u8);
     r_seed.zeroize();
+    for p in r_hat.iter_mut() {
+        ntt_i16(p);
+        poly_reduce_i16(p);
+    }
 
-    let mut u_hat = matvec_transpose_i16(&a_hat, &r_hat);
-    let mut u_poly: [Poly16; K] = std::array::from_fn(|i| {
-        poly_reduce_i16(&mut u_hat[i]);
-        let mut tmp = u_hat[i];
-        intt_i16(&mut tmp);
-        poly_reduce_i16(&mut tmp);
-        let mut res = poly_add_i16(&tmp, &e1_poly[i]);
-        poly_reduce_i16(&mut res);
-        res
-    });
+    // u = INTT(Aᵀ·r̂) + e1, computed in place in the accumulator.
+    let mut u_poly = matvec_transpose_i16(&a_hat, &r_hat);
+    for i in 0..K {
+        poly_reduce_i16(&mut u_poly[i]);
+        intt_i16(&mut u_poly[i]);
+        poly_reduce_i16(&mut u_poly[i]);
+        poly_add_in_place_i16(&mut u_poly[i], &e1_poly[i]);
+        poly_reduce_i16(&mut u_poly[i]);
+    }
 
-    let mut v_hat = inner_product_i16(&pk.t_hat, &r_hat);
-    poly_reduce_i16(&mut v_hat);
-    let mut v_poly = v_hat;
+    // v = INTT(t̂·r̂) + e2 + Decompress1(m), likewise in place.
+    let mut v_poly = inner_product_i16(&pk.t_hat, &r_hat);
+    poly_reduce_i16(&mut v_poly);
     intt_i16(&mut v_poly);
     poly_reduce_i16(&mut v_poly);
-    v_poly = poly_add_i16(&v_poly, &e2);
+    poly_add_in_place_i16(&mut v_poly, &e2);
     let mut m_poly = msg_encode_i16(m);
-    v_poly = poly_add_i16(&v_poly, &m_poly);
+    poly_add_in_place_i16(&mut v_poly, &m_poly);
     poly_reduce_i16(&mut v_poly);
     r_hat.zeroize();
     e1_poly.zeroize();
     e2.zeroize();
     m_poly.zeroize();
-    u_hat.zeroize();
-    v_hat.zeroize();
 
-    let u_enc: [[u8; 320]; K] = std::array::from_fn(|i| {
-        let mut buf = [0u8; 320];
-        poly_compress_i16(&u_poly[i], 10, &mut buf); buf
-    });
+    let mut u_enc = [[0u8; 320]; K];
+    for i in 0..K {
+        poly_compress_i16(&u_poly[i], 10, &mut u_enc[i]);
+    }
     let mut v_enc = [0u8; 128];
     poly_compress_i16(&v_poly, 4, &mut v_enc);
     // The uncompressed ciphertext carries more about r than the public

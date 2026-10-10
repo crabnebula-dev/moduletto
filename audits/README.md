@@ -7,6 +7,7 @@ in the tree before the review is published.
 | Date | Reviewer | Reviewed commit | Findings | Status |
 |---|---|---|---|---|
 | 2026-10-10 | Claude Mythos 5.1 (Anthropic) | `7440768` | 1 critical, 3 medium, 4 low, 5 informational | All remediated in the commit that adds this file |
+| 2026-10-10 (follow-up) | Claude Mythos 5.1 (Anthropic) | `aeaedd9` | Timing verification: 1 hardware finding (operand-dependent multiply latency on Apple M5 without DIT) | Remediated: DIT, stack scrub, dudect and Valgrind checks in CI, proofs in CI |
 
 ---
 
@@ -160,12 +161,15 @@ rounding division. The same change is applied in `examples/kyber_benchmark.rs`.
   feature, drawing d, z and m from the OS CSPRNG. `KemError::Randomness`
   reports a failed OS source.
 
-### Residual risks and open items
+### Residual risks and open items (as of the main review)
 
 - Constant-time behaviour is argued from code shape, not measured. A dudect
   or ctgrind run on the release build of `decaps` would close this.
+  **Addressed in the follow-up below.**
 - Stack copies of secret arrays made by the compiler are not wiped.
+  **Addressed in the follow-up below (stack scrub, in-place transforms).**
 - The Coq proofs are not built in CI (no Rocq toolchain there).
+  **Addressed in the follow-up below.**
 - This review was carried out by an AI system. It found a real,
   reproducible flaw, but it is not a substitute for a human cryptographic
   review before the crate is relied on in production.
@@ -187,6 +191,132 @@ rounding division. The same change is applied in `examples/kyber_benchmark.rs`.
 
 ---
 
+## 2026-10-10 follow-up — timing verification, stack hygiene, proofs in CI
+
+Requested by the operator after the main review, against commit
+`aeaedd98c88b3155f2ebb9d9d80fa81815b09efb` (the remediation commit).
+
+### Timing verification
+
+Two checks were added and both run in CI (`constant-time` job).
+
+**dudect** (`examples/ct_dudect.rs`, crate `dudect-bencher` 0.7): each bench
+times one operation on inputs from two classes interleaved at random and
+reports the maximum Welch t-statistic over the percentile-cropped
+distributions. The dudect paper treats |t| > 4.5 as a detected leak.
+
+**Valgrind, ctgrind-style** (`examples/valgrind_ct.rs`, feature
+`valgrind-ct`): secret inputs are marked undefined for memcheck, which reports
+any conditional jump or memory address that depends on them. The library
+declassifies values that are derived from secrets but public by design (ρ,
+ek, H(ek), the ciphertext). This runs on x86-64 Linux only, so it covers the
+scalar int16 path and was run in CI, not on the reviewer's machine (Apple
+Silicon; no Valgrind, no Docker available).
+
+**First dudect run (Apple M5, before any change), 50 000 samples per bench:**
+
+| Bench | max t | Verdict |
+|---|---:|---|
+| decaps valid vs tampered, ML-KEM-512 | −9.8 | leak detected |
+| decaps valid vs tampered, ML-KEM-768 | −7.5 | leak detected |
+| decaps fixed vs random message, 512 / 768 | −2.1 / −1.9 | clean |
+| encaps fixed vs random message, 512 / 768 | −2.3 / +2.7 | clean |
+| NTT `ct_mul_ntt`, zero vs random polynomials | +1.1 | clean |
+| field `ct_*` ops, zero vs random operands | −39.9 | leak detected |
+
+**Diagnosis.** The two signals do not come from control flow (the Valgrind
+check and the code shape rule that out) but from the hardware. On AArch64,
+the architecture guarantees data-independent timing for the listed
+instructions only while `PSTATE.DIT` is set. A dependent chain of 64-bit
+multiplies on this core, steady state:
+
+| Operands | DIT clear | DIT set |
+|---|---:|---:|
+| all zero | 308 ns | 244 ns |
+| all one | 263 ns | 243 ns |
+| small (< 3329) | 251 ns | 243 ns |
+| random | 248 ns | 242 ns |
+
+The same experiment inside dudect (`hw_mul64_zero_vs_random`, 32 passes of a
+256-multiply chain per sample): |t| = 90 with DIT clear, 1.6 with DIT set.
+Setting DIT for the process and rerunning the original benches brought
+decaps valid-vs-tampered to |t| = 1.4 / 1.3 and the zero-operand field ops to
+1.3. The field-ops signal also vanished with a fixed random operand in place
+of zeros (|t| = 1.6), which is why the harness now uses a fixed random input
+by default and offers `DUDECT_FIXED=zero` for the paper's choice.
+
+**Fix.** New module `src/dit.rs`: `with_dit(f)` reads the DIT register, sets
+bit 24, runs `f`, restores the previous value; FEAT_DIT is detected once via
+`is_aarch64_feature_detected!("dit")`; a plain call elsewhere. Every ML-KEM
+entry point runs under it. Callers using `modn_ct`/`ntt` primitives on
+secrets are told to wrap their computation the same way (README, module
+docs). Cost on ML-KEM-768, with the stack scrub below included: keygen
+8.29 → 8.53 µs, encaps 9.84 → 9.94 µs, decaps 14.50 → 14.74 µs.
+
+**Final dudect run (library sets DIT; 50 000 samples per bench):**
+
+| Bench | max t |
+|---|---:|
+| decaps valid vs tampered, 512 / 768 | −1.6 / +2.2 |
+| decaps fixed vs random message, 512 / 768 | +1.8 / +1.7 |
+| encaps fixed vs random message, 512 / 768 | −2.0 / +2.3 |
+| NTT `ct_mul_ntt`, fixed vs random | +1.1 |
+| field `ct_*` ops, fixed vs random (under `with_dit`) | +1.8 |
+| CPU: 64-bit multiply chain, zero vs random, DIT clear | −178 (platform property, not gated) |
+| CPU: same, DIT set | −1.5 |
+
+A previous full run gave the same picture (all gated benches within ±3.4).
+
+The CI gate fails on |t| > 10 for every bench except the DIT-clear platform
+bench. The threshold is above 4.5 to leave room for shared-runner noise;
+local runs should be read against 4.5.
+
+### Stack hygiene
+
+- `scrub_stack()` runs after each ML-KEM operation from the entry point's
+  frame: it zero-fills a 32 KiB buffer that occupies the addresses the
+  operation's frames just vacated, kept by a compiler fence and
+  `black_box`. This is libsodium's `sodium_stackzero`; it reaches memory
+  below the frame on the current thread and nothing else.
+- Noise polynomials are transformed in place (`iter_mut` NTT loops) instead
+  of through `.map()` copies; the encapsulation accumulators are reused as
+  the output buffers; `ct_from_bytes` temporaries are gone.
+- Keccak states are wiped: `keccak_sponge` zeroizes at the end; `ShakeStream`
+  and the two-lane `ShakeX2` zeroize on drop; the scalar staging arrays of
+  `ShakeX2::new` are wiped after packing.
+
+### Proofs in CI
+
+The `proofs` job runs `make -C proofs all` in `rocq/rocq-prover:9.1.1` via
+`coq-community/docker-coq-action` (pinned by SHA): the four Rocq files
+type-check and the OCaml harness runs its 27,185 checks.
+
+### Verification record (follow-up)
+
+| Check | Result |
+|---|---|
+| `cargo test --release`, `cargo test`, `--features getrandom` | pass (43 unit, 5 integration, 7 doc) |
+| no_std rlib builds; `wasm32-unknown-unknown` check | pass |
+| `cargo run --release --example valgrind_ct` (native smoke test, no Valgrind) | ok |
+| dudect, final run | table above |
+| ML-KEM-768 timing before/after | +1–2% |
+| CI jobs `constant-time` and `proofs` | added; first run happens on push |
+
+### Residual risks after the follow-up
+
+- The Valgrind check has not been executed on the reviewer's machine; its
+  first run is the CI run on push. Memcheck also cannot see operand-dependent
+  arithmetic timing, which is what DIT addresses.
+- `with_dit` is a no-op without `std` (no safe FEAT_DIT detection) and off
+  AArch64. x86-64 has no user-settable equivalent; Intel's DOITM is a
+  kernel-controlled MSR. The dudect results above are for Apple M5 only.
+- The stack scrub does not reach registers saved by the OS or memory above
+  the entry point's frame.
+- An AI performed this work; a human cryptographic review is still advised
+  before production use.
+
+---
+
 ## Seal
 
 ```
@@ -199,7 +329,12 @@ rounding division. The same change is applied in `examples/kyber_benchmark.rs`.
 │  Audit started    2026-10-10T06:01:40Z                      │
 │  Audit sealed     2026-10-10T06:29:14Z                      │
 │  Elapsed          27 minutes, review and remediation        │
-│  Remediation      the commit that introduces this file      │
+│  Remediation      commit aeaedd9 (introduces this file)     │
+│                                                             │
+│  Follow-up        timing verification, stack scrub,         │
+│                   proofs in CI; commit after aeaedd9        │
+│  Follow-up sealed 2026-10-10T06:55:38Z                      │
+│  Elapsed, total   53 minutes (26 for the follow-up)         │
 └─────────────────────────────────────────────────────────────┘
 ```
 
