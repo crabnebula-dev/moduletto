@@ -201,23 +201,24 @@ fn dsa_sign_key_a_vs_key_b(runner: &mut CtRunner, rng: &mut BenchRng) {
             break rnd;
         }
     };
-    let inputs: Vec<(Class, [u8; 32])> = (0..samples())
+    // Each sample owns a heap copy of its key, allocated in sample order.
+    // With one fixed buffer per class, each class would always run at its
+    // own address, so cache-set and 4K-aliasing effects would separate the
+    // classes on x86-64 with no secret involved.
+    let inputs: Vec<(Class, Box<[u8; ml_dsa_65::SK_BYTES]>, [u8; 32])> = (0..samples())
         .map(|_| {
             let cls = class(rng);
             let sk = match cls {
                 Class::Left => &sk_a,
                 Class::Right => &sk_b,
             };
-            (cls, rnd_for(sk, rng))
+            let rnd = rnd_for(sk, rng);
+            (cls, Box::new(*sk), rnd)
         })
         .collect();
-    for (cls, rnd) in &inputs {
-        let sk = match cls {
-            Class::Left => &sk_a,
-            Class::Right => &sk_b,
-        };
+    for (cls, sk, rnd) in &inputs {
         // The production entry point, not the counting one.
-        runner.run_one(*cls, || ml_dsa_65::sign(sk, &m, b"", rnd).unwrap());
+        runner.run_one(*cls, || ml_dsa_65::sign(&sk[..], &m, b"", rnd).unwrap());
     }
 }
 
