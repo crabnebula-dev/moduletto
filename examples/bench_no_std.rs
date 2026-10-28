@@ -5,7 +5,7 @@
 //
 // This demonstrates that Moduletto works in both std and no_std environments
 
-use moduletto::{ModN, ConstantTimeOps, NTTPoly};
+use moduletto::{ConstantTimeOps, ModN, NTTPoly};
 
 fn run_no_std_operations() {
     let iterations = 10_000;
@@ -60,7 +60,7 @@ fn run_no_std_operations() {
 
     // Modular inverse (when gcd = 1)
     for i in 0..(iterations / 10) {
-        let value = Mod3329::new((i % 3328) + 1);  // Avoid 0 and multiples of 3329
+        let value = Mod3329::new((i % 3328) + 1); // Avoid 0 and multiples of 3329
         let _ = value.inverse();
     }
 

@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use std::hint::black_box;
 use moduletto::modn_ct::ConstantTimeOps;
 use moduletto::ntt::{NTTPoly, KYBER_Q};
 use moduletto::ModN;
+use std::hint::black_box;
 
 type KyberMod = ModN<KYBER_Q>;
 
@@ -14,15 +14,9 @@ fn bench_modn_scalar(c: &mut Criterion) {
     let a = KyberMod::new(1234);
     let b = KyberMod::new(5678);
 
-    g.bench_function("add", |bench| {
-        bench.iter(|| black_box(a) + black_box(b))
-    });
-    g.bench_function("sub", |bench| {
-        bench.iter(|| black_box(a) - black_box(b))
-    });
-    g.bench_function("mul", |bench| {
-        bench.iter(|| black_box(a) * black_box(b))
-    });
+    g.bench_function("add", |bench| bench.iter(|| black_box(a) + black_box(b)));
+    g.bench_function("sub", |bench| bench.iter(|| black_box(a) - black_box(b)));
+    g.bench_function("mul", |bench| bench.iter(|| black_box(a) * black_box(b)));
     g.bench_function("neg", |bench| bench.iter(|| -black_box(a)));
     g.bench_function("pow_small", |bench| {
         bench.iter(|| black_box(a).pow(black_box(100)))
@@ -30,9 +24,7 @@ fn bench_modn_scalar(c: &mut Criterion) {
     g.bench_function("pow_large", |bench| {
         bench.iter(|| black_box(a).pow(black_box(u64::MAX / 2)))
     });
-    g.bench_function("inverse", |bench| {
-        bench.iter(|| black_box(a).inverse())
-    });
+    g.bench_function("inverse", |bench| bench.iter(|| black_box(a).inverse()));
 
     g.finish();
 }
@@ -54,9 +46,7 @@ fn bench_modn_ct(c: &mut Criterion) {
     g.bench_function("ct_mul", |bench| {
         bench.iter(|| black_box(a).ct_mul(black_box(b)))
     });
-    g.bench_function("ct_neg", |bench| {
-        bench.iter(|| black_box(a).ct_neg())
-    });
+    g.bench_function("ct_neg", |bench| bench.iter(|| black_box(a).ct_neg()));
     g.bench_function("ct_eq", |bench| {
         bench.iter(|| black_box(a).ct_eq(black_box(b)))
     });
@@ -73,7 +63,9 @@ fn bench_modn_ct(c: &mut Criterion) {
 // ── NTT polynomial operations ────────────────────────────────────────────────
 
 fn make_poly(seed: i64) -> NTTPoly {
-    let coeffs: Vec<i64> = (0..256).map(|i| (seed * 31 + i as i64 * 7) % KYBER_Q).collect();
+    let coeffs: Vec<i64> = (0..256)
+        .map(|i| (seed * 31 + i as i64 * 7) % KYBER_Q)
+        .collect();
     NTTPoly::from_slice(&coeffs)
 }
 
@@ -83,9 +75,7 @@ fn bench_ntt(c: &mut Criterion) {
     let p = make_poly(42);
     let q = make_poly(137);
 
-    g.bench_function("forward_ntt", |bench| {
-        bench.iter(|| black_box(&p).ntt())
-    });
+    g.bench_function("forward_ntt", |bench| bench.iter(|| black_box(&p).ntt()));
     g.bench_function("inverse_ntt", |bench| {
         let p_ntt = p.ntt();
         bench.iter(|| black_box(&p_ntt).intt())

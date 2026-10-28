@@ -5,7 +5,7 @@
 // For browser testing, use wasm-pack: wasm-pack build --target web --features wasm
 
 #[cfg(target_arch = "wasm32")]
-use moduletto::{ModN, ConstantTimeOps, NTTPoly, KyberCoeff, KYBER_N};
+use moduletto::{ConstantTimeOps, KyberCoeff, ModN, NTTPoly, KYBER_N};
 
 #[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 use wasm_bindgen::prelude::*;

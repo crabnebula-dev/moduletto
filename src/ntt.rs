@@ -376,6 +376,7 @@ mod neon16 {
     /// `ref/ntt.c`. Indices 1..=127 drive the butterflies; 64..=127 double as
     /// the basemul pair twiddles (pair 2i uses `+ZETAS[64+i]`, pair 2i+1 uses
     /// `-ZETAS[64+i]`), a layout checked against the portable table in tests.
+    #[rustfmt::skip]
     static ZETAS: [i16; 128] = [
         -1044, -758, -359, -1517, 1493, 1422, 287, 202, -171, 622, 1577, 182, 962, -1202,
         -1474, 1468, 573, -1325, 264, 383, -829, 1458, -1602, -130, -681, 1017, 732, 608,
@@ -449,9 +450,15 @@ mod neon16 {
         let q = vdupq_n_s16(Q16);
 
         // t = (a·20159 + 2^25) >> 26, evaluated as ((a·20159 + 2^25) >> 16) >> 10
-        let t_lo = vaddq_s32(vmull_s16(vget_low_s16(a), vget_low_s16(v)), vdupq_n_s32(1 << 25));
+        let t_lo = vaddq_s32(
+            vmull_s16(vget_low_s16(a), vget_low_s16(v)),
+            vdupq_n_s32(1 << 25),
+        );
         let lo16 = vshr_n_s16::<10>(vshrn_n_s32::<16>(t_lo));
-        let t_hi = vaddq_s32(vmull_s16(vget_high_s16(a), vget_high_s16(v)), vdupq_n_s32(1 << 25));
+        let t_hi = vaddq_s32(
+            vmull_s16(vget_high_s16(a), vget_high_s16(v)),
+            vdupq_n_s32(1 << 25),
+        );
         let hi16 = vshr_n_s16::<10>(vshrn_n_s32::<16>(t_hi));
 
         let t = vcombine_s16(lo16, hi16);
@@ -688,7 +695,12 @@ mod neon16 {
         for i in 0..64 {
             let zeta = ZETAS[64 + i];
             basemul_pair(&mut out[4 * i..], &a[4 * i..], &b[4 * i..], zeta);
-            basemul_pair(&mut out[4 * i + 2..], &a[4 * i + 2..], &b[4 * i + 2..], -zeta);
+            basemul_pair(
+                &mut out[4 * i + 2..],
+                &a[4 * i + 2..],
+                &b[4 * i + 2..],
+                -zeta,
+            );
         }
         out
     }
@@ -715,7 +727,8 @@ mod neon16 {
     fn to_canonical(r: &[i16; KYBER_N]) -> [KyberCoeff; KYBER_N] {
         let mut out = [KyberCoeff::zero(); KYBER_N];
         for (o, &s) in out.iter_mut().zip(r.iter()) {
-            let v = barrett(s) as i64; // |v| < q
+            // |v| < q.
+            let v = barrett(s) as i64;
             // SAFETY: branchless fixup puts v in [0, q).
             *o = unsafe { KyberCoeff::new_unchecked(v + (KYBER_Q & (v >> 63))) };
         }
@@ -743,10 +756,7 @@ mod neon16 {
         to_canonical(&r)
     }
 
-    pub fn multiply(
-        x: &[KyberCoeff; KYBER_N],
-        y: &[KyberCoeff; KYBER_N],
-    ) -> [KyberCoeff; KYBER_N] {
+    pub fn multiply(x: &[KyberCoeff; KYBER_N], y: &[KyberCoeff; KYBER_N]) -> [KyberCoeff; KYBER_N] {
         let mut a = to_i16(x);
         let mut b = to_i16(y);
         // SAFETY: NEON is architecturally guaranteed on aarch64.
@@ -933,7 +943,9 @@ impl NTTPoly {
         }
 
         // SAFETY: `canonicalize_wide` yields values in [0, q).
-        Self { coeffs: unsafe { from_raw(result) } }
+        Self {
+            coeffs: unsafe { from_raw(result) },
+        }
     }
 
     // ========================================================================
@@ -1067,7 +1079,8 @@ mod tests {
             assert_eq!(
                 ntt_result.coeffs[i].value(),
                 schoolbook_result.coeffs[i].value(),
-                "Mismatch at coefficient {}", i
+                "Mismatch at coefficient {}",
+                i
             );
         }
     }
@@ -1121,7 +1134,8 @@ mod ct_tests {
             assert_eq!(
                 result.coeffs[i].value(),
                 poly.coeffs[i].value(),
-                "CT roundtrip failed at coefficient {}", i
+                "CT roundtrip failed at coefficient {}",
+                i
             );
         }
     }
@@ -1138,7 +1152,8 @@ mod ct_tests {
             assert_eq!(
                 vt_result.coeffs[i].value(),
                 ct_result.coeffs[i].value(),
-                "CT-NTT differs from VT-NTT at coefficient {}", i
+                "CT-NTT differs from VT-NTT at coefficient {}",
+                i
             );
         }
     }
@@ -1156,7 +1171,8 @@ mod ct_tests {
             assert_eq!(
                 vt_result.coeffs[i].value(),
                 ct_result.coeffs[i].value(),
-                "CT-INTT differs from VT-INTT at coefficient {}", i
+                "CT-INTT differs from VT-INTT at coefficient {}",
+                i
             );
         }
     }
@@ -1179,7 +1195,8 @@ mod ct_tests {
             assert_eq!(
                 vt_result.coeffs[i].value(),
                 ct_result.coeffs[i].value(),
-                "CT-mul differs from VT-mul at coefficient {}", i
+                "CT-mul differs from VT-mul at coefficient {}",
+                i
             );
         }
     }
@@ -1196,7 +1213,8 @@ mod ct_tests {
             assert_eq!(
                 ntt_result.coeffs[i].value(),
                 schoolbook_result.coeffs[i].value(),
-                "CT-NTT mul differs from schoolbook at coefficient {}", i
+                "CT-NTT mul differs from schoolbook at coefficient {}",
+                i
             );
         }
     }
@@ -1213,7 +1231,8 @@ mod ct_tests {
             assert_eq!(
                 ct_result.coeffs[i].value(),
                 vt_result.coeffs[i].value(),
-                "CT-add differs from VT-add at coefficient {}", i
+                "CT-add differs from VT-add at coefficient {}",
+                i
             );
         }
     }
@@ -1230,7 +1249,8 @@ mod ct_tests {
             assert_eq!(
                 ct_result.coeffs[i].value(),
                 vt_result.coeffs[i].value(),
-                "CT-sub differs from VT-sub at coefficient {}", i
+                "CT-sub differs from VT-sub at coefficient {}",
+                i
             );
         }
     }

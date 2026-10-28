@@ -3,8 +3,8 @@
 //! This module provides JavaScript-friendly wrappers for modular arithmetic operations
 //! with the Kyber-512 modulus (3329).
 
+use crate::{ConstantTimeOps, KyberCoeff, ModN, NTTPoly, KYBER_N, KYBER_Q};
 use wasm_bindgen::prelude::*;
-use crate::{ModN, ConstantTimeOps, NTTPoly, KyberCoeff, KYBER_Q, KYBER_N};
 
 // Type alias for Kyber-512 modulus
 type Mod3329 = ModN<3329>;
@@ -96,7 +96,10 @@ pub fn poly_zero() -> Vec<i32> {
 #[wasm_bindgen]
 pub fn poly_add(a: &[i32], b: &[i32]) -> Result<Vec<i32>, JsValue> {
     if a.len() != KYBER_N || b.len() != KYBER_N {
-        return Err(JsValue::from_str(&format!("Polynomials must have {} coefficients", KYBER_N)));
+        return Err(JsValue::from_str(&format!(
+            "Polynomials must have {} coefficients",
+            KYBER_N
+        )));
     }
 
     let mut poly_a = NTTPoly::zero();
@@ -116,7 +119,10 @@ pub fn poly_add(a: &[i32], b: &[i32]) -> Result<Vec<i32>, JsValue> {
 #[wasm_bindgen]
 pub fn poly_sub(a: &[i32], b: &[i32]) -> Result<Vec<i32>, JsValue> {
     if a.len() != KYBER_N || b.len() != KYBER_N {
-        return Err(JsValue::from_str(&format!("Polynomials must have {} coefficients", KYBER_N)));
+        return Err(JsValue::from_str(&format!(
+            "Polynomials must have {} coefficients",
+            KYBER_N
+        )));
     }
 
     let mut poly_a = NTTPoly::zero();
@@ -136,7 +142,10 @@ pub fn poly_sub(a: &[i32], b: &[i32]) -> Result<Vec<i32>, JsValue> {
 #[wasm_bindgen]
 pub fn poly_ntt(coeffs: &[i32]) -> Result<Vec<i32>, JsValue> {
     if coeffs.len() != KYBER_N {
-        return Err(JsValue::from_str(&format!("Polynomial must have {} coefficients", KYBER_N)));
+        return Err(JsValue::from_str(&format!(
+            "Polynomial must have {} coefficients",
+            KYBER_N
+        )));
     }
 
     let mut poly = NTTPoly::zero();
@@ -153,7 +162,10 @@ pub fn poly_ntt(coeffs: &[i32]) -> Result<Vec<i32>, JsValue> {
 #[wasm_bindgen]
 pub fn poly_intt(coeffs: &[i32]) -> Result<Vec<i32>, JsValue> {
     if coeffs.len() != KYBER_N {
-        return Err(JsValue::from_str(&format!("Polynomial must have {} coefficients", KYBER_N)));
+        return Err(JsValue::from_str(&format!(
+            "Polynomial must have {} coefficients",
+            KYBER_N
+        )));
     }
 
     let mut poly = NTTPoly::zero();
@@ -170,7 +182,10 @@ pub fn poly_intt(coeffs: &[i32]) -> Result<Vec<i32>, JsValue> {
 #[wasm_bindgen]
 pub fn poly_mul_ntt(a: &[i32], b: &[i32]) -> Result<Vec<i32>, JsValue> {
     if a.len() != KYBER_N || b.len() != KYBER_N {
-        return Err(JsValue::from_str(&format!("Polynomials must have {} coefficients", KYBER_N)));
+        return Err(JsValue::from_str(&format!(
+            "Polynomials must have {} coefficients",
+            KYBER_N
+        )));
     }
 
     let mut poly_a = NTTPoly::zero();

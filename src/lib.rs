@@ -50,14 +50,14 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(incomplete_features)]
 
-mod modn;
 pub mod dit;
+mod modn;
 pub mod modn_ct;
 pub mod ntt;
 
 pub use modn::ModN;
 pub use modn_ct::ConstantTimeOps;
-pub use ntt::{NTTPoly, KyberCoeff, KYBER_Q, KYBER_N};
+pub use ntt::{KyberCoeff, NTTPoly, KYBER_N, KYBER_Q};
 
 // ML-KEM-512 and ML-KEM-768 (FIPS 203) key encapsulation.
 #[cfg(feature = "std")]

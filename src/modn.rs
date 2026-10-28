@@ -31,7 +31,7 @@
 //! ```
 
 use core::fmt;
-use core::ops::{Add, Sub, Mul, Neg};
+use core::ops::{Add, Mul, Neg, Sub};
 
 /// A value modulo N, where N is known at compile time.
 ///
@@ -50,7 +50,7 @@ use core::ops::{Add, Sub, Mul, Neg};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct ModN<const N: i64> {
-    value: i64,  // Always in canonical form [0, N)
+    value: i64, // Always in canonical form [0, N)
 }
 
 impl<const N: i64> ModN<N> {
@@ -249,7 +249,9 @@ impl<const N: i64> Neg for ModN<N> {
         if self.value == 0 {
             self
         } else {
-            Self { value: N - self.value }
+            Self {
+                value: N - self.value,
+            }
         }
     }
 }
@@ -291,7 +293,6 @@ impl<const N: i64> ModN<N> {
     pub fn has_simd() -> bool {
         false
     }
-
 }
 
 // Common Type Aliases
@@ -372,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_inverse_nonexistent() {
-        let a = ModN::<6>::new(4);  // gcd(4, 6) = 2 ≠ 1
+        let a = ModN::<6>::new(4); // gcd(4, 6) = 2 ≠ 1
         assert!(a.inverse().is_none());
     }
 

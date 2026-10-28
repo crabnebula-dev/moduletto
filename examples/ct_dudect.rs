@@ -40,11 +40,7 @@
 //! Run everything once:   cargo run --release --example ct_dudect
 //! Run one for longer:    cargo run --release --example ct_dudect -- --continuous decaps_valid_vs_tampered_768
 
-use dudect_bencher::{
-    ctbench_main,
-    rand::RngExt,
-    BenchRng, Class, CtRunner,
-};
+use dudect_bencher::{ctbench_main, rand::RngExt, BenchRng, Class, CtRunner};
 use moduletto::dit::with_dit;
 use moduletto::kem::{ml_kem_512, ml_kem_768};
 use moduletto::modn_ct::ConstantTimeOps;
@@ -52,14 +48,19 @@ use moduletto::{KyberCoeff, ModN, NTTPoly, KYBER_N};
 
 /// Samples per benchmark across both classes (`DUDECT_SAMPLES` overrides).
 fn samples() -> usize {
-    std::env::var("DUDECT_SAMPLES").ok().and_then(|v| v.parse().ok()).unwrap_or(50_000)
+    std::env::var("DUDECT_SAMPLES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50_000)
 }
 
 /// `DUDECT_FIXED=zero` uses all-zero inputs for the fixed class of the
 /// arithmetic benches (the dudect paper's choice); the default is one fixed
 /// random input.
 fn fixed_is_zero() -> bool {
-    std::env::var("DUDECT_FIXED").map(|v| v == "zero").unwrap_or(false)
+    std::env::var("DUDECT_FIXED")
+        .map(|v| v == "zero")
+        .unwrap_or(false)
 }
 
 fn bytes32(rng: &mut BenchRng) -> [u8; 32] {
@@ -69,7 +70,11 @@ fn bytes32(rng: &mut BenchRng) -> [u8; 32] {
 }
 
 fn class(rng: &mut BenchRng) -> Class {
-    if rng.random::<bool>() { Class::Left } else { Class::Right }
+    if rng.random::<bool>() {
+        Class::Left
+    } else {
+        Class::Right
+    }
 }
 
 macro_rules! kem_benches {
@@ -117,10 +122,13 @@ macro_rules! kem_benches {
             let inputs: Vec<(Class, [u8; 32])> = (0..samples())
                 .map(|_| {
                     let cls = class(rng);
-                    (cls, match cls {
-                        Class::Left => fixed,
-                        Class::Right => bytes32(rng),
-                    })
+                    (
+                        cls,
+                        match cls {
+                            Class::Left => fixed,
+                            Class::Right => bytes32(rng),
+                        },
+                    )
                 })
                 .collect();
             for (cls, m) in &inputs {

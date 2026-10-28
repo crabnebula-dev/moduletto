@@ -38,7 +38,10 @@ const ML_KEM_768: Set = Set {
 };
 
 fn unhex(s: &str) -> Vec<u8> {
-    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+        .collect()
 }
 
 fn records(text: &str) -> impl Iterator<Item = Vec<&str>> {
@@ -101,7 +104,14 @@ fn acvp_key_checks() {
             ("dkcheck", "ML-KEM-768") => ml_kem_768::check_decapsulation_key(&key),
             other => panic!("unknown record {other:?}"),
         };
-        assert_eq!(got.is_ok(), f[3] == "pass", "{} {} tc{}: {got:?}", f[0], f[1], f[2]);
+        assert_eq!(
+            got.is_ok(),
+            f[3] == "pass",
+            "{} {} tc{}: {got:?}",
+            f[0],
+            f[1],
+            f[2]
+        );
         n += 1;
     }
     assert_eq!(n, 40);
@@ -111,12 +121,18 @@ fn acvp_key_checks() {
 fn input_checks() {
     assert_eq!(kem::SS_BYTES, 32);
     let (ek, dk) = ml_kem_768::keygen_derand(&[1; 32], &[2; 32]);
-    assert_eq!(ml_kem_768::encaps_derand(&ek[..1183], &[0; 32]), Err(KemError::Length));
+    assert_eq!(
+        ml_kem_768::encaps_derand(&ek[..1183], &[0; 32]),
+        Err(KemError::Length)
+    );
     // A coefficient of 0xfff (>= q) must fail the modulus check.
     let mut bad = ek;
     bad[0] = 0xff;
     bad[1] |= 0x0f;
-    assert_eq!(ml_kem_768::encaps_derand(&bad, &[0; 32]), Err(KemError::InvalidKey));
+    assert_eq!(
+        ml_kem_768::encaps_derand(&bad, &[0; 32]),
+        Err(KemError::InvalidKey)
+    );
     let (c, k) = ml_kem_768::encaps_derand(&ek, &[3; 32]).unwrap();
     assert_eq!(ml_kem_768::decaps(&dk, &c).unwrap(), k);
     // Tampered ciphertext: implicit rejection gives a different key, not an error.
@@ -136,7 +152,10 @@ fn input_checks() {
     assert_eq!(ml_kem_768::decaps(&dk2, &c), Err(KemError::InvalidKey));
     // A 512 key is not a 768 key.
     let (ek512, _) = ml_kem_512::keygen_derand(&[1; 32], &[2; 32]);
-    assert_eq!(ml_kem_768::encaps_derand(&ek512, &[0; 32]), Err(KemError::Length));
+    assert_eq!(
+        ml_kem_768::encaps_derand(&ek512, &[0; 32]),
+        Err(KemError::Length)
+    );
 }
 
 /// FIPS 203 implicit rejection, checked through the public API against an

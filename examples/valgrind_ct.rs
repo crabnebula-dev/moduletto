@@ -33,14 +33,20 @@ struct Set {
 const SETS: [Set; 2] = [
     Set {
         name: "ML-KEM-512",
-        keygen: |d, z| { let (ek, dk) = ml_kem_512::keygen_derand(d, z); (ek.to_vec(), dk.to_vec()) },
+        keygen: |d, z| {
+            let (ek, dk) = ml_kem_512::keygen_derand(d, z);
+            (ek.to_vec(), dk.to_vec())
+        },
         encaps: |ek, m| ml_kem_512::encaps_derand(ek, m).map(|(c, k)| (c.to_vec(), k)),
         decaps: ml_kem_512::decaps,
         k: 2,
     },
     Set {
         name: "ML-KEM-768",
-        keygen: |d, z| { let (ek, dk) = ml_kem_768::keygen_derand(d, z); (ek.to_vec(), dk.to_vec()) },
+        keygen: |d, z| {
+            let (ek, dk) = ml_kem_768::keygen_derand(d, z);
+            (ek.to_vec(), dk.to_vec())
+        },
         encaps: |ek, m| ml_kem_768::encaps_derand(ek, m).map(|(c, k)| (c.to_vec(), k)),
         decaps: ml_kem_768::decaps,
         k: 3,
@@ -77,8 +83,16 @@ fn kem(set: &Set) {
     declassify(&ss_sender);
     declassify(&ss_receiver);
     declassify(&ss_rejected);
-    assert_eq!(ss_sender, ss_receiver, "{}: shared secrets differ", set.name);
-    assert_ne!(ss_sender, ss_rejected, "{}: tampered ciphertext accepted", set.name);
+    assert_eq!(
+        ss_sender, ss_receiver,
+        "{}: shared secrets differ",
+        set.name
+    );
+    assert_ne!(
+        ss_sender, ss_rejected,
+        "{}: tampered ciphertext accepted",
+        set.name
+    );
 }
 
 fn field_ops() {
@@ -101,7 +115,9 @@ fn field_ops() {
 
 fn ntt_ops() {
     let mut a = NTTPoly::new(core::array::from_fn(|i| KyberCoeff::new((i * 13) as i64)));
-    let mut b = NTTPoly::new(core::array::from_fn(|i| KyberCoeff::new((i * 7 + 1) as i64)));
+    let mut b = NTTPoly::new(core::array::from_fn(|i| {
+        KyberCoeff::new((i * 7 + 1) as i64)
+    }));
     poison(&mut a.coeffs);
     poison(&mut b.coeffs);
     let p = a.ct_mul_ntt(&b);
