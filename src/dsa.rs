@@ -89,6 +89,13 @@
 //! reveal nothing about s₁, s₂ or c. The accepted values are never branched
 //! on.
 //!
+//! The loop count dominates signing time. Its distribution depends on the
+//! private key, because the checks depend on c·s₁, c·s₂ and c·t₀. Two keys
+//! can therefore differ in mean signing time over many signatures. This
+//! crate treats the count as public and makes no claim about it. The claim
+//! is that signing time does not depend on secrets at a given loop count.
+//! `examples/ct_dudect.rs` tests that claim.
+//!
 //! `ExpandA` samples the public matrix from the public seed ρ and is
 //! variable-time, as `SampleNTT` is in ML-KEM.
 //!
@@ -263,6 +270,30 @@ pub mod ml_dsa_65 {
         // Algorithm 2 line 10: M' = 0 ‖ |ctx| ‖ ctx ‖ M, absorbed in parts.
         let prefix = [0u8, ctx.len() as u8];
         super::sign_entry(sk, &[&prefix, ctx, m], None, rnd)
+    }
+
+    /// Not part of the API, and not for production. [`sign`], also
+    /// returning how many rejection-loop iterations the call ran (1 when
+    /// the first candidate is accepted).
+    ///
+    /// The count is public by design (see the module documentation). This
+    /// exists for the timing harnesses. `examples/ct_dudect.rs` uses it to
+    /// time both key classes at the same loop count, and
+    /// `examples/valgrind_ct.rs` to check that a rejected iteration ran.
+    /// Requires the `ct-bench` or the `valgrind-ct` feature.
+    #[cfg(any(feature = "ct-bench", feature = "valgrind-ct"))]
+    #[doc(hidden)]
+    pub fn sign_iterations(
+        sk: &[u8],
+        m: &[u8],
+        ctx: &[u8],
+        rnd: &[u8; RND_BYTES],
+    ) -> Result<([u8; SIG_BYTES], u32), DsaError> {
+        if ctx.len() > MAX_CONTEXT_BYTES {
+            return Err(DsaError::Context);
+        }
+        let prefix = [0u8, ctx.len() as u8];
+        super::sign_entry_counted(sk, &[&prefix, ctx, m], None, rnd)
     }
 
     /// FIPS 204 `ML-DSA.Sign(sk, M, ctx)` (Algorithm 2), hedged, with `rnd`
@@ -1181,19 +1212,30 @@ fn sign_entry(
     mu: Option<&[u8; 64]>,
     rnd: &[u8; 32],
 ) -> Result<[u8; SIG_BYTES], DsaError> {
+    sign_entry_counted(sk, m_prime, mu, rnd).map(|(sig, _)| sig)
+}
+
+/// [`sign_entry`], also returning the public rejection-loop count.
+fn sign_entry_counted(
+    sk: &[u8],
+    m_prime: &[&[u8]],
+    mu: Option<&[u8; 64]>,
+    rnd: &[u8; 32],
+) -> Result<([u8; SIG_BYTES], u32), DsaError> {
     if sk.len() != SK_BYTES {
         return Err(DsaError::Length);
     }
     Ok(crate::dit::with_dit(|| {
         let mut sig = [0u8; SIG_BYTES];
-        sign(sk, m_prime, mu, rnd, &mut sig);
+        let iterations = sign(sk, m_prime, mu, rnd, &mut sig);
         scrub_stack();
         declassify(&sig);
-        sig
+        (sig, iterations)
     }))
 }
 
-/// FIPS 204 Algorithm 7 (ML-DSA.Sign_internal) into `sig`.
+/// FIPS 204 Algorithm 7 (ML-DSA.Sign_internal) into `sig`. Returns the
+/// number of rejection-loop iterations, which is public by design.
 ///
 /// Kept out of line, as [`keygen`] is, so that its frame lies below the
 /// frame that calls [`scrub_stack`]. With LTO it would otherwise be inlined
@@ -1206,7 +1248,7 @@ fn sign(
     mu: Option<&[u8; 64]>,
     rnd: &[u8; 32],
     sig: &mut [u8; SIG_BYTES],
-) {
+) -> u32 {
     // Lines 1 to 4: decode, and move s₁, s₂ and t₀ to the NTT domain in
     // place.
     let mut key = sk_decode(sk);
@@ -1245,7 +1287,9 @@ fn sign(
     let mut z = [[0; N]; L];
     let mut h = [[0; N]; K];
     let mut kappa: u16 = 0;
+    let mut iterations: u32 = 0;
     loop {
+        iterations = iterations.saturating_add(1);
         // Lines 11 to 13.
         expand_mask(&rho2, kappa, &mut y);
         y_hat = y;
@@ -1342,6 +1386,7 @@ fn sign(
     z.zeroize();
     h.zeroize();
     drop(key);
+    iterations
 }
 
 // ── Verification (FIPS 204 Algorithm 8) ─────────────────────────────────────

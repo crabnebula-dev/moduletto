@@ -51,6 +51,9 @@ getrandom = ["dep:getrandom", "std"]
 # Valgrind memcheck hooks for the ctgrind-style constant-time check
 # (`examples/valgrind_ct.rs`); no-ops off x86-64 Linux. Not for production.
 valgrind-ct = ["std"]
+# Exposes the public signing-loop count for the dudect timing test
+# (`examples/ct_dudect.rs`). Not for production.
+ct-bench = ["std"]
 
 [profile.dev]
 panic = "abort"
@@ -91,7 +94,7 @@ path = "examples/bench_wasm.rs"
 [[example]]
 name = "ct_dudect"
 path = "examples/ct_dudect.rs"
-required-features = ["std"]
+required-features = ["std", "ct-bench"]
 
 [[example]]
 name = "valgrind_ct"

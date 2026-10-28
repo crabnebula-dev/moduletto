@@ -94,7 +94,10 @@ to signatures, keys, messages and contexts.
   iteration is rejected, since FIPS 204 lets the loop count vary. The other
   two are whether a candidate in `RejBoundedPoly` or `SampleInBall` is
   rejected. This crate treats those as public, because rejected candidates
-  are independent of the accepted values. `ExpandA` over the public seed ρ
+  are independent of the accepted values. The loop count dominates signing
+  time, and its distribution depends on the private key, so two keys can
+  differ in mean signing time. The claim is that signing time does not
+  depend on secrets at a given loop count. `ExpandA` over the public seed ρ
   is variable-time, as in ML-KEM. Verification is not constant-time: it
   treats its inputs as public.
 - **Timing: hardware.** Branch-free code is constant-time only if the
@@ -111,24 +114,25 @@ to signatures, keys, messages and contexts.
   `examples/ct_dudect.rs` is a [dudect](https://github.com/oreparaz/dudect)
   statistical test (Welch's t on interleaved input classes; |t| > 4.5 means a
   leak) over decapsulation valid-vs-tampered and fixed-vs-random message,
-  encapsulation, ML-DSA-65 signing under two private keys, the NTT and the
-  field operations, plus a CPU-only bench that shows the multiplier effect
-  above with and without DIT.
+  encapsulation, ML-DSA-65 signing under two private keys at the same
+  rejection-loop count (feature `ct-bench`), the NTT and the field
+  operations, plus a CPU-only bench that shows the multiplier effect above
+  with and without DIT.
   `examples/valgrind_ct.rs` is a ctgrind-style check: secrets are marked
   undefined for Valgrind memcheck, which reports any branch or memory address
   that depends on them (feature `valgrind-ct`, x86-64 Linux, scalar path).
   It covers ML-KEM key generation, encapsulation and decapsulation, and
-  ML-DSA-65 key generation and signing. The ML-DSA cases have not yet run
-  under Valgrind: no x86-64 Linux host was available while writing them.
-  Until the CI constant-time job has passed once, treat the ML-DSA side as
-  checked by code review and dudect only.
+  ML-DSA-65 key generation and signing, with rejected iterations included.
+  The ML-DSA cases first passed under Valgrind in the CI constant-time job
+  on 2026-10-28 (GitHub Actions run 40753126905).
   Measured ML-KEM results are in [audits/](audits/). The ML-DSA additions
   have no audit entry yet; the dudect figures measured while writing them
   are in the header of `examples/ct_dudect.rs`.
 
   ```bash
-  cargo run --release --example ct_dudect                  # all benches once
-  cargo run --release --example ct_dudect -- --continuous decaps_valid_vs_tampered_768
+  cargo run --release --features ct-bench --example ct_dudect     # all benches once
+  cargo run --release --features ct-bench --example ct_dudect -- \
+    --continuous decaps_valid_vs_tampered_768
   # x86-64 Linux:
   cargo build --release --features valgrind-ct --example valgrind_ct
   valgrind --tool=memcheck --error-exitcode=1 -q target/release/examples/valgrind_ct
@@ -303,7 +307,7 @@ cargo bench
 cargo test --lib --no-default-features --release
 
 # Timing checks (see Security)
-cargo run --release --example ct_dudect
+cargo run --release --features ct-bench --example ct_dudect
 ```
 
 ## Feature Flags
@@ -315,6 +319,7 @@ cargo run --release --example ct_dudect
 | `wasm` | WebAssembly bindings via `wasm-bindgen` |
 | `getrandom` | `kem::*::keygen()`, `encaps(ek)`, `dsa::ml_dsa_65::keygen()`, `keygen_into` and `sign_hedged()` backed by the OS CSPRNG |
 | `valgrind-ct` | Valgrind memcheck hooks for `examples/valgrind_ct.rs` (x86-64 Linux); not for production builds |
+| `ct-bench` | Exposes the public ML-DSA signing-loop count to `examples/ct_dudect.rs`. Not for production |
 
 ```toml
 # Default (std)

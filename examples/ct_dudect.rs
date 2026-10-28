@@ -22,16 +22,28 @@
 //! - `modn_ct_ops_fixed_vs_random`: 256 `ct_mul`/`ct_add`/`ct_sub`/`ct_select`
 //!   on a fixed input against random ones.
 //! - `dsa_sign_key_a_vs_key_b`: ML-DSA-65 hedged signing of one message under
-//!   two fixed private keys, with fresh random `rnd` for every sample in both
-//!   classes. The number of rejection-loop iterations is public by design
-//!   (FIPS 204) and dominates the timing, so a fixed-vs-random split would
-//!   report it. Here both classes draw it from the same distribution: the z
-//!   check does not depend on the key, and the others barely do. A
-//!   difference between the classes would come from secret-dependent work
-//!   inside an iteration. The two keys share ρ and tr and differ in K, s1,
-//!   s2 and t0. With two unrelated keys the bench reported |t| up to 6.7 on
-//!   Apple M5; with a shared ρ, five runs stayed within 2.5. ExpandA over ρ
-//!   is variable-time by design, which explains the difference.
+//!   two fixed private keys, at the same rejection-loop count. The loop
+//!   count is public by design (FIPS 204 lets it vary) and dominates the
+//!   timing. Its distribution depends on the key through c·s1, c·s2 and
+//!   c·t0, so two keys differ in mean count. An earlier version of this
+//!   bench drew a fresh `rnd` per sample and let the count vary. On CI
+//!   (x86-64) it reported max t = −10.94 and +10.44 from that difference
+//!   alone. Now each sample's `rnd` is drawn, before timing, until signing
+//!   under that sample's key takes exactly one iteration. The count comes
+//!   from `ml_dsa_65::sign_iterations`, a hidden function behind the
+//!   `ct-bench` feature. Only the production `ml_dsa_65::sign` is timed.
+//!   The timed call still runs the whole secret-dependent path once:
+//!   decoding and NTT of the key, ρ″, ExpandMask, the matrix product,
+//!   Decompose, SampleInBall, the four checks, the hint and the encoding.
+//!   A difference between the classes would come from secret-dependent work
+//!   at a fixed loop count. Rejected iterations run the same loop body, and
+//!   `examples/valgrind_ct.rs` checks signings with several iterations. The
+//!   two keys share ρ and tr and differ in K, s1, s2 and t0. ρ and tr are
+//!   public. ExpandA over ρ is variable-time by design, so a different ρ
+//!   would separate the classes by public data alone. With two unrelated
+//!   keys an earlier version reported |t| up to 6.7 on Apple M5. At one
+//!   iteration per sample, three runs on Apple M5 gave max t = +1.95,
+//!   −2.98 and −2.34.
 //! - `hw_mul64_zero_vs_random` and `hw_mul64_zero_vs_random_dit`: not this
 //!   crate's code but the CPU's: a dependent chain of 64-bit multiplies on
 //!   all-zero against random operands, with `PSTATE.DIT` clear and set. On
@@ -50,8 +62,9 @@
 //! arithmetic benches instead of one fixed random input (with DIT clear, zero
 //! operands alone move the multiplier's timing; see `hw_mul64_*`).
 //!
-//! Run everything once:   cargo run --release --example ct_dudect
-//! Run one for longer:    cargo run --release --example ct_dudect -- --continuous decaps_valid_vs_tampered_768
+//! Run everything once:   cargo run --release --features ct-bench --example ct_dudect
+//! Run one for longer:    cargo run --release --features ct-bench --example ct_dudect -- \
+//!                          --continuous decaps_valid_vs_tampered_768
 
 use dudect_bencher::{ctbench_main, rand::RngExt, BenchRng, Class, CtRunner};
 use moduletto::dit::with_dit;
@@ -165,6 +178,9 @@ kem_benches!(
     encaps_fixed_vs_random_message_768
 );
 
+/// Rejection-loop iterations of every timed ML-DSA signing, in both classes.
+const DSA_ITERATIONS: u32 = 1;
+
 fn dsa_sign_key_a_vs_key_b(runner: &mut CtRunner, rng: &mut BenchRng) {
     let (_, sk_a) = ml_dsa_65::keygen_internal(&bytes32(rng));
     let (_, other) = ml_dsa_65::keygen_internal(&bytes32(rng));
@@ -175,13 +191,32 @@ fn dsa_sign_key_a_vs_key_b(runner: &mut CtRunner, rng: &mut BenchRng) {
     sk_b[32..64].copy_from_slice(&other[32..64]);
     sk_b[128..].copy_from_slice(&other[128..]);
     let m = bytes32(rng);
-    let inputs: Vec<(Class, [u8; 32])> =
-        (0..samples()).map(|_| (class(rng), bytes32(rng))).collect();
+    // The loop count is public and its mean differs between keys, so every
+    // timed signing runs exactly DSA_ITERATIONS iterations. For each sample,
+    // draw rnd until signing under that sample's key takes that many.
+    let rnd_for = |sk: &[u8], rng: &mut BenchRng| loop {
+        let rnd = bytes32(rng);
+        let (_, n) = ml_dsa_65::sign_iterations(sk, &m, b"", &rnd).unwrap();
+        if n == DSA_ITERATIONS {
+            break rnd;
+        }
+    };
+    let inputs: Vec<(Class, [u8; 32])> = (0..samples())
+        .map(|_| {
+            let cls = class(rng);
+            let sk = match cls {
+                Class::Left => &sk_a,
+                Class::Right => &sk_b,
+            };
+            (cls, rnd_for(sk, rng))
+        })
+        .collect();
     for (cls, rnd) in &inputs {
         let sk = match cls {
             Class::Left => &sk_a,
             Class::Right => &sk_b,
         };
+        // The production entry point, not the counting one.
         runner.run_one(*cls, || ml_dsa_65::sign(sk, &m, b"", rnd).unwrap());
     }
 }

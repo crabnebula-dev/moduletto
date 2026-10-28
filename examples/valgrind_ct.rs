@@ -20,7 +20,9 @@
 //! iteration is rejected; FIPS 204 lets that loop count vary. The other two
 //! are whether a candidate in RejBoundedPoly or SampleInBall is rejected.
 //! This crate treats those rejections as public. Everything else in key
-//! generation and signing stays undefined.
+//! generation and signing stays undefined. Both signings here run several
+//! iterations, so rejected iterations are checked as well as accepted ones.
+//! `examples/ct_dudect.rs` times one-iteration signings only.
 //!
 //! Off x86-64 Linux, or outside valgrind, this runs as a plain smoke test.
 
@@ -121,12 +123,20 @@ fn dsa() {
     poison(&mut sk[128..]);
 
     // Hedged signing with secret randomness, and deterministic signing. The
-    // library declassifies the accepted signature.
+    // library declassifies the accepted signature. The loop count is
+    // defined, since it counts declassified accept-or-reject decisions.
     let m = b"valgrind ML-DSA-65";
     let mut rnd = [0x55u8; 32];
     poison(&mut rnd);
-    let hedged = ml_dsa_65::sign(&sk, m, b"ctx", &rnd).expect("sign");
-    let det = ml_dsa_65::sign(&sk, m, b"ctx", &[0; 32]).expect("sign");
+    let (hedged, n_hedged) = ml_dsa_65::sign_iterations(&sk, m, b"ctx", &rnd).expect("sign");
+    let (det, n_det) = ml_dsa_65::sign_iterations(&sk, m, b"ctx", &[0; 32]).expect("sign");
+    // dudect times one-iteration signings only. These inputs take 4 and 3
+    // iterations, so memcheck also sees rejected iterations and the loop
+    // back. Keep it so if the inputs change.
+    assert!(
+        n_hedged > 1 && n_det > 1,
+        "ML-DSA-65: no rejected iteration ({n_hedged}, {n_det})"
+    );
 
     // Verification treats its inputs as public. None of them is poisoned
     // here, so valgrind checks nothing secret in it. FIPS 204 section 3.6.3
