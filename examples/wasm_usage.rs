@@ -69,7 +69,7 @@ fn main() {
     println!("  Polynomial degree: {}", KYBER_N);
     println!(
         "  First 5 coefficients of sum: {:?}",
-        &poly_sum.coeffs[0..5]
+        poly_sum.coeffs[0..5]
             .iter()
             .map(|c| c.value())
             .collect::<Vec<_>>()
@@ -90,7 +90,7 @@ fn main() {
     println!("Original polynomial (first 5 coeffs):");
     println!(
         "  {:?}",
-        &test_poly.coeffs[0..5]
+        test_poly.coeffs[0..5]
             .iter()
             .map(|c| c.value())
             .collect::<Vec<_>>()
@@ -101,7 +101,7 @@ fn main() {
     println!("\nAfter NTT (first 5 coeffs):");
     println!(
         "  {:?}",
-        &ntt_poly.coeffs[0..5]
+        ntt_poly.coeffs[0..5]
             .iter()
             .map(|c| c.value())
             .collect::<Vec<_>>()
@@ -112,7 +112,7 @@ fn main() {
     println!("\nAfter inverse NTT (first 5 coeffs):");
     println!(
         "  {:?}",
-        &recovered.coeffs[0..5]
+        recovered.coeffs[0..5]
             .iter()
             .map(|c| c.value())
             .collect::<Vec<_>>()
@@ -194,7 +194,7 @@ fn main() {
     println!("  Product computed using NTT (O(n log n))");
     println!(
         "  First 5 coefficients: {:?}",
-        &product.coeffs[0..5]
+        product.coeffs[0..5]
             .iter()
             .map(|c| c.value())
             .collect::<Vec<_>>()

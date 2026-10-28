@@ -14,19 +14,32 @@
 //! that consumes them (rejection sampling, the ek and dk input checks) does
 //! not report. Shared secrets are declassified *here*, only to compare them.
 //!
+//! For ML-DSA-65 the library declassifies ρ, the public key, tr and the
+//! accepted signature. It also declassifies three decisions it branches on
+//! (see the `dsa` module documentation). The first is whether a signing
+//! iteration is rejected; FIPS 204 lets that loop count vary. The other two
+//! are whether a candidate in RejBoundedPoly or SampleInBall is rejected.
+//! This crate treats those rejections as public. Everything else in key
+//! generation and signing stays undefined.
+//!
 //! Off x86-64 Linux, or outside valgrind, this runs as a plain smoke test.
 
+use moduletto::dsa::ml_dsa_65;
 use moduletto::kem::{ml_kem_512, ml_kem_768, KemError};
 use moduletto::modn_ct::ConstantTimeOps;
 use moduletto::valgrind::{declassify, poison, running};
 use moduletto::{KyberCoeff, ModN, NTTPoly, KYBER_N};
 use std::hint::black_box;
 
+type Keygen = fn(&[u8; 32], &[u8; 32]) -> (Vec<u8>, Vec<u8>);
+type Encaps = fn(&[u8], &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]), KemError>;
+type Decaps = fn(&[u8], &[u8]) -> Result<[u8; 32], KemError>;
+
 struct Set {
     name: &'static str,
-    keygen: fn(&[u8; 32], &[u8; 32]) -> (Vec<u8>, Vec<u8>),
-    encaps: fn(&[u8], &[u8; 32]) -> Result<(Vec<u8>, [u8; 32]), KemError>,
-    decaps: fn(&[u8], &[u8]) -> Result<[u8; 32], KemError>,
+    keygen: Keygen,
+    encaps: Encaps,
+    decaps: Decaps,
     k: usize,
 }
 
@@ -95,6 +108,46 @@ fn kem(set: &Set) {
     );
 }
 
+fn dsa() {
+    // Key generation from a secret seed. The library declassifies pk and the
+    // copies of ρ and tr inside sk; K, s1, s2 and t0 stay undefined.
+    let mut xi = [0x44u8; 32];
+    poison(&mut xi);
+    let (pk, mut sk) = ml_dsa_65::keygen_internal(&xi);
+
+    // As for dk above: a key loaded from storage would be defined, so mark
+    // its secret parts (K, then s1, s2 and t0) explicitly.
+    poison(&mut sk[32..64]);
+    poison(&mut sk[128..]);
+
+    // Hedged signing with secret randomness, and deterministic signing. The
+    // library declassifies the accepted signature.
+    let m = b"valgrind ML-DSA-65";
+    let mut rnd = [0x55u8; 32];
+    poison(&mut rnd);
+    let hedged = ml_dsa_65::sign(&sk, m, b"ctx", &rnd).expect("sign");
+    let det = ml_dsa_65::sign(&sk, m, b"ctx", &[0; 32]).expect("sign");
+
+    // Verification treats its inputs as public. None of them is poisoned
+    // here, so valgrind checks nothing secret in it. FIPS 204 section 3.6.3
+    // notes its intermediates can still be sensitive. The library wipes
+    // them, but verification is not constant-time.
+    assert!(
+        ml_dsa_65::verify(&pk, m, b"ctx", &hedged),
+        "ML-DSA-65: hedged signature rejected"
+    );
+    assert!(
+        ml_dsa_65::verify(&pk, m, b"ctx", &det),
+        "ML-DSA-65: deterministic signature rejected"
+    );
+    let mut bad = det;
+    bad[0] ^= 1;
+    assert!(
+        !ml_dsa_65::verify(&pk, m, b"ctx", &bad),
+        "ML-DSA-65: tampered signature accepted"
+    );
+}
+
 fn field_ops() {
     type F = ModN<3329>;
     let mut a: [F; 256] = core::array::from_fn(|i| F::new((i * 37 + 11) as i64));
@@ -133,6 +186,7 @@ fn main() {
     for set in &SETS {
         kem(set);
     }
+    dsa();
     field_ops();
     ntt_ops();
     println!("ok");

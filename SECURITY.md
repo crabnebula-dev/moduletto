@@ -28,5 +28,5 @@ you cannot use GitHub's.
 
 The source in this repository, its build and test configuration, and its
 published releases. The library has no RNG of its own unless the `getrandom`
-feature is enabled; see the `kem` module documentation for what callers must
-supply and wipe.
+feature is enabled; see the `kem` and `dsa` module documentation for what
+callers must supply and wipe.

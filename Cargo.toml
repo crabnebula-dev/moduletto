@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Daniel Thompson-Yvetot"]
 license = "MIT OR Apache-2.0"
-description = "Optimized modular arithmetic and NTT for lattice cryptography — i64 scalar, i16 NEON, and Kyber KEM"
+description = "Optimized modular arithmetic and NTT for lattice cryptography: i64 scalar, i16 NEON, ML-KEM (FIPS 203) and ML-DSA-65 (FIPS 204)"
 keywords = ["modular", "ntt", "kyber", "cryptography", "performance"]
 categories = ["mathematics", "no-std", "cryptography", "embedded"]
 repository = "https://github.com/crabnebula-dev/moduletto"
@@ -17,10 +17,11 @@ crate-type = ["cdylib", "rlib"]
 subtle = { version = "2.6", default-features = false, features = ["core_hint_black_box"] }
 
 # Wipes secret key material and the intermediates of key generation,
-# encapsulation and decapsulation (src/kem.rs)
+# encapsulation, decapsulation and signing (src/kem.rs, src/dsa.rs)
 zeroize = { version = "1.8", default-features = false }
 
-# Optional OS randomness for `kem::*::keygen()` and `kem::*::encaps(ek)`
+# Optional OS randomness for `kem::*::keygen()`, `kem::*::encaps(ek)`,
+# `dsa::ml_dsa_65::keygen()` and `dsa::ml_dsa_65::sign_hedged()`
 getrandom = { version = "0.4", optional = true }
 
 # Optional WebAssembly support
@@ -44,7 +45,8 @@ default = ["std"]
 std = ["alloc"]
 alloc = ["libm"]
 wasm = ["wasm-bindgen", "web-sys"]
-# RNG-backed `keygen()` / `encaps(ek)` in `kem`, drawing from the OS CSPRNG
+# RNG-backed `keygen()` / `encaps(ek)` in `kem` and `keygen()` /
+# `sign_hedged()` in `dsa`, drawing from the OS CSPRNG
 getrandom = ["dep:getrandom", "std"]
 # Valgrind memcheck hooks for the ctgrind-style constant-time check
 # (`examples/valgrind_ct.rs`); no-ops off x86-64 Linux. Not for production.

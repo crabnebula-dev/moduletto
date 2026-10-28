@@ -21,6 +21,17 @@
 //!   against random ones.
 //! - `modn_ct_ops_fixed_vs_random`: 256 `ct_mul`/`ct_add`/`ct_sub`/`ct_select`
 //!   on a fixed input against random ones.
+//! - `dsa_sign_key_a_vs_key_b`: ML-DSA-65 hedged signing of one message under
+//!   two fixed private keys, with fresh random `rnd` for every sample in both
+//!   classes. The number of rejection-loop iterations is public by design
+//!   (FIPS 204) and dominates the timing, so a fixed-vs-random split would
+//!   report it. Here both classes draw it from the same distribution: the z
+//!   check does not depend on the key, and the others barely do. A
+//!   difference between the classes would come from secret-dependent work
+//!   inside an iteration. The two keys share ρ and tr and differ in K, s1,
+//!   s2 and t0. With two unrelated keys the bench reported |t| up to 6.7 on
+//!   Apple M5; with a shared ρ, five runs stayed within 2.5. ExpandA over ρ
+//!   is variable-time by design, which explains the difference.
 //! - `hw_mul64_zero_vs_random` and `hw_mul64_zero_vs_random_dit`: not this
 //!   crate's code but the CPU's: a dependent chain of 64-bit multiplies on
 //!   all-zero against random operands, with `PSTATE.DIT` clear and set. On
@@ -30,7 +41,9 @@
 //!   arithmetic benches above are wrapped in it here for the same reason.
 //!
 //! Key generation is not measured: `SampleNTT` over the public seed ρ is
-//! variable-time by design (FIPS 203), and ρ changes with every key.
+//! variable-time by design (FIPS 203), and ρ changes with every key. The same
+//! holds for ML-DSA key generation (`ExpandA` over ρ, and the public
+//! rejection pattern of `ExpandS`).
 //!
 //! Environment: `DUDECT_SAMPLES` (default 50 000) sets the samples per bench;
 //! `DUDECT_FIXED=zero` uses all-zero inputs for the fixed class of the
@@ -42,6 +55,7 @@
 
 use dudect_bencher::{ctbench_main, rand::RngExt, BenchRng, Class, CtRunner};
 use moduletto::dit::with_dit;
+use moduletto::dsa::ml_dsa_65;
 use moduletto::kem::{ml_kem_512, ml_kem_768};
 use moduletto::modn_ct::ConstantTimeOps;
 use moduletto::{KyberCoeff, ModN, NTTPoly, KYBER_N};
@@ -150,6 +164,27 @@ kem_benches!(
     decaps_fixed_vs_random_message_768,
     encaps_fixed_vs_random_message_768
 );
+
+fn dsa_sign_key_a_vs_key_b(runner: &mut CtRunner, rng: &mut BenchRng) {
+    let (_, sk_a) = ml_dsa_65::keygen_internal(&bytes32(rng));
+    let (_, other) = ml_dsa_65::keygen_internal(&bytes32(rng));
+    // Key B keeps A's public parts (ρ and tr) and takes the secret parts
+    // (K, s1, s2, t0) of another key. ExpandA over ρ is variable-time by
+    // design, so a different ρ alone would separate the classes.
+    let mut sk_b = sk_a;
+    sk_b[32..64].copy_from_slice(&other[32..64]);
+    sk_b[128..].copy_from_slice(&other[128..]);
+    let m = bytes32(rng);
+    let inputs: Vec<(Class, [u8; 32])> =
+        (0..samples()).map(|_| (class(rng), bytes32(rng))).collect();
+    for (cls, rnd) in &inputs {
+        let sk = match cls {
+            Class::Left => &sk_a,
+            Class::Right => &sk_b,
+        };
+        runner.run_one(*cls, || ml_dsa_65::sign(sk, &m, b"", rnd).unwrap());
+    }
+}
 
 fn random_poly(rng: &mut BenchRng) -> NTTPoly {
     let mut coeffs = [KyberCoeff::zero(); KYBER_N];
@@ -260,6 +295,7 @@ ctbench_main!(
     encaps_fixed_vs_random_message_768,
     ntt_ct_mul_fixed_vs_random,
     modn_ct_ops_fixed_vs_random,
+    dsa_sign_key_a_vs_key_b,
     hw_mul64_zero_vs_random,
     hw_mul64_zero_vs_random_dit
 );

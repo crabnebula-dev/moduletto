@@ -19,6 +19,8 @@
 //! - Polynomial compression (10-bit u, 4-bit v)
 //! - Full keygen, encaps, decaps with re-encryption in decaps
 
+#![allow(clippy::needless_range_loop)]
+
 use moduletto::ntt::{KyberCoeff, NTTConstants, NTTPoly, KYBER_N, KYBER_Q};
 use sha3::digest::{ExtendableOutput, FixedOutput, Update, XofReader};
 use sha3::{
@@ -46,49 +48,35 @@ const KYBER_K: usize = 2; // Kyber-512
 // The 25 source indices across the 5 rows are all distinct, so in-place is safe.
 
 #[inline(always)]
+#[rustfmt::skip]
 fn keccak_f1600(s: &mut [u64; 25]) {
+
     const RC: [u64; 24] = [
-        0x0000000000000001,
-        0x0000000000008082,
-        0x800000000000808a,
-        0x8000000080008000,
-        0x000000000000808b,
-        0x0000000080000001,
-        0x8000000080008081,
-        0x8000000000008009,
-        0x000000000000008a,
-        0x0000000000000088,
-        0x0000000080008009,
-        0x000000008000000a,
-        0x000000008000808b,
-        0x800000000000008b,
-        0x8000000000008089,
-        0x8000000000008003,
-        0x8000000000008002,
-        0x8000000000000080,
-        0x000000000000800a,
-        0x800000008000000a,
-        0x8000000080008081,
-        0x8000000000008080,
-        0x0000000080000001,
-        0x8000000080008008,
+        0x0000000000000001, 0x0000000000008082, 0x800000000000808a,
+        0x8000000080008000, 0x000000000000808b, 0x0000000080000001,
+        0x8000000080008081, 0x8000000000008009, 0x000000000000008a,
+        0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
+        0x000000008000808b, 0x800000000000008b, 0x8000000000008089,
+        0x8000000000008003, 0x8000000000008002, 0x8000000000000080,
+        0x000000000000800a, 0x800000008000000a, 0x8000000080008081,
+        0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
     ];
 
     // Load state into named locals so LLVM can allocate all 25 to registers.
     // The A/E interleaving matches the XKCP FullUnrolling approach: each round reads
     // one set of variables and writes another, so the compiler sees no aliasing.
-    let (mut a0, mut a1, mut a2, mut a3, mut a4) = (s[0], s[1], s[2], s[3], s[4]);
-    let (mut a5, mut a6, mut a7, mut a8, mut a9) = (s[5], s[6], s[7], s[8], s[9]);
+    let (mut a0,  mut a1,  mut a2,  mut a3,  mut a4)  = (s[0],  s[1],  s[2],  s[3],  s[4]);
+    let (mut a5,  mut a6,  mut a7,  mut a8,  mut a9)  = (s[5],  s[6],  s[7],  s[8],  s[9]);
     let (mut a10, mut a11, mut a12, mut a13, mut a14) = (s[10], s[11], s[12], s[13], s[14]);
     let (mut a15, mut a16, mut a17, mut a18, mut a19) = (s[15], s[16], s[17], s[18], s[19]);
     let (mut a20, mut a21, mut a22, mut a23, mut a24) = (s[20], s[21], s[22], s[23], s[24]);
 
     // prepareTheta: column XOR values
-    let mut ca = a0 ^ a5 ^ a10 ^ a15 ^ a20;
-    let mut ce = a1 ^ a6 ^ a11 ^ a16 ^ a21;
-    let mut ci = a2 ^ a7 ^ a12 ^ a17 ^ a22;
-    let mut co = a3 ^ a8 ^ a13 ^ a18 ^ a23;
-    let mut cu = a4 ^ a9 ^ a14 ^ a19 ^ a24;
+    let mut ca = a0^a5^a10^a15^a20;
+    let mut ce = a1^a6^a11^a16^a21;
+    let mut ci = a2^a7^a12^a17^a22;
+    let mut co = a3^a8^a13^a18^a23;
+    let mut cu = a4^a9^a14^a19^a24;
 
     for rc in RC {
         // θ: diagonal parity mixing
@@ -102,8 +90,8 @@ fn keccak_f1600(s: &mut [u64; 25]) {
         // Column sums for the next round are accumulated inline — no write-back needed.
 
         // Row b: sources a0,a6,a12,a18,a24 with d[a,e,i,o,u]
-        let bba = a0 ^ da;
-        let bbe = (a6 ^ de).rotate_left(44);
+        let bba =  a0  ^ da;
+        let bbe = (a6  ^ de).rotate_left(44);
         let bbi = (a12 ^ di).rotate_left(43);
         let bbo = (a18 ^ do_).rotate_left(21);
         let bbu = (a24 ^ du).rotate_left(14);
@@ -112,15 +100,11 @@ fn keccak_f1600(s: &mut [u64; 25]) {
         let ebi = bbi ^ (!bbo & bbu);
         let ebo = bbo ^ (!bbu & bba);
         let ebu = bbu ^ (!bba & bbe);
-        ca = eba;
-        ce = ebe;
-        ci = ebi;
-        co = ebo;
-        cu = ebu;
+        ca = eba; ce = ebe; ci = ebi; co = ebo; cu = ebu;
 
         // Row g: sources a3,a9,a10,a16,a22 with d[o,u,a,e,i]
-        let bga = (a3 ^ do_).rotate_left(28);
-        let bge = (a9 ^ du).rotate_left(20);
+        let bga = (a3  ^ do_).rotate_left(28);
+        let bge = (a9  ^ du).rotate_left(20);
         let bgi = (a10 ^ da).rotate_left(3);
         let bgo = (a16 ^ de).rotate_left(45);
         let bgu = (a22 ^ di).rotate_left(61);
@@ -129,15 +113,11 @@ fn keccak_f1600(s: &mut [u64; 25]) {
         let egi = bgi ^ (!bgo & bgu);
         let ego = bgo ^ (!bgu & bga);
         let egu = bgu ^ (!bga & bge);
-        ca ^= ega;
-        ce ^= ege;
-        ci ^= egi;
-        co ^= ego;
-        cu ^= egu;
+        ca ^= ega; ce ^= ege; ci ^= egi; co ^= ego; cu ^= egu;
 
         // Row k: sources a1,a7,a13,a19,a20 with d[e,i,o,u,a]
-        let bka = (a1 ^ de).rotate_left(1);
-        let bke = (a7 ^ di).rotate_left(6);
+        let bka = (a1  ^ de).rotate_left(1);
+        let bke = (a7  ^ di).rotate_left(6);
         let bki = (a13 ^ do_).rotate_left(25);
         let bko = (a19 ^ du).rotate_left(8);
         let bku = (a20 ^ da).rotate_left(18);
@@ -146,15 +126,11 @@ fn keccak_f1600(s: &mut [u64; 25]) {
         let eki = bki ^ (!bko & bku);
         let eko = bko ^ (!bku & bka);
         let eku = bku ^ (!bka & bke);
-        ca ^= eka;
-        ce ^= eke;
-        ci ^= eki;
-        co ^= eko;
-        cu ^= eku;
+        ca ^= eka; ce ^= eke; ci ^= eki; co ^= eko; cu ^= eku;
 
         // Row m: sources a4,a5,a11,a17,a23 with d[u,a,e,i,o]
-        let bma = (a4 ^ du).rotate_left(27);
-        let bme = (a5 ^ da).rotate_left(36);
+        let bma = (a4  ^ du).rotate_left(27);
+        let bme = (a5  ^ da).rotate_left(36);
         let bmi = (a11 ^ de).rotate_left(10);
         let bmo = (a17 ^ di).rotate_left(15);
         let bmu = (a23 ^ do_).rotate_left(56);
@@ -163,15 +139,11 @@ fn keccak_f1600(s: &mut [u64; 25]) {
         let emi = bmi ^ (!bmo & bmu);
         let emo = bmo ^ (!bmu & bma);
         let emu = bmu ^ (!bma & bme);
-        ca ^= ema;
-        ce ^= eme;
-        ci ^= emi;
-        co ^= emo;
-        cu ^= emu;
+        ca ^= ema; ce ^= eme; ci ^= emi; co ^= emo; cu ^= emu;
 
         // Row s: sources a2,a8,a14,a15,a21 with d[i,o,u,a,e]
-        let bsa = (a2 ^ di).rotate_left(62);
-        let bse = (a8 ^ do_).rotate_left(55);
+        let bsa = (a2  ^ di).rotate_left(62);
+        let bse = (a8  ^ do_).rotate_left(55);
         let bsi = (a14 ^ du).rotate_left(39);
         let bso = (a15 ^ da).rotate_left(41);
         let bsu = (a21 ^ de).rotate_left(2);
@@ -180,43 +152,19 @@ fn keccak_f1600(s: &mut [u64; 25]) {
         let esi = bsi ^ (!bso & bsu);
         let eso = bso ^ (!bsu & bsa);
         let esu = bsu ^ (!bsa & bse);
-        ca ^= esa;
-        ce ^= ese;
-        ci ^= esi;
-        co ^= eso;
-        cu ^= esu;
+        ca ^= esa; ce ^= ese; ci ^= esi; co ^= eso; cu ^= esu;
 
         // Update named state locals for next round
-        a0 = eba;
-        a1 = ebe;
-        a2 = ebi;
-        a3 = ebo;
-        a4 = ebu;
-        a5 = ega;
-        a6 = ege;
-        a7 = egi;
-        a8 = ego;
-        a9 = egu;
-        a10 = eka;
-        a11 = eke;
-        a12 = eki;
-        a13 = eko;
-        a14 = eku;
-        a15 = ema;
-        a16 = eme;
-        a17 = emi;
-        a18 = emo;
-        a19 = emu;
-        a20 = esa;
-        a21 = ese;
-        a22 = esi;
-        a23 = eso;
-        a24 = esu;
+        a0=eba; a1=ebe; a2=ebi; a3=ebo; a4=ebu;
+        a5=ega; a6=ege; a7=egi; a8=ego; a9=egu;
+        a10=eka; a11=eke; a12=eki; a13=eko; a14=eku;
+        a15=ema; a16=eme; a17=emi; a18=emo; a19=emu;
+        a20=esa; a21=ese; a22=esi; a23=eso; a24=esu;
     }
 
     // Store back to memory
-    (s[0], s[1], s[2], s[3], s[4]) = (a0, a1, a2, a3, a4);
-    (s[5], s[6], s[7], s[8], s[9]) = (a5, a6, a7, a8, a9);
+    (s[0],  s[1],  s[2],  s[3],  s[4])  = (a0,  a1,  a2,  a3,  a4);
+    (s[5],  s[6],  s[7],  s[8],  s[9])  = (a5,  a6,  a7,  a8,  a9);
     (s[10], s[11], s[12], s[13], s[14]) = (a10, a11, a12, a13, a14);
     (s[15], s[16], s[17], s[18], s[19]) = (a15, a16, a17, a18, a19);
     (s[20], s[21], s[22], s[23], s[24]) = (a20, a21, a22, a23, a24);
@@ -802,7 +750,7 @@ fn poly_decompress(bytes: &[u8], d: u32) -> NTTPoly {
                 ];
                 for k in 0..4 {
                     coeffs[4 * i + k] =
-                        KyberCoeff::new(((((t[k] & 0x3FF) as i64) * KYBER_Q + 512) >> 10) as i64);
+                        KyberCoeff::new((((t[k] & 0x3FF) as i64) * KYBER_Q + 512) >> 10);
                 }
             }
         }
@@ -833,7 +781,7 @@ fn msg_decode(p: &NTTPoly) -> [u8; 32] {
     for i in 0..32 {
         for j in 0..8 {
             let v = p.coeffs[8 * i + j].value() as u32; // canonical, [0, q)
-            let bit = (((v << 1) + 1665) * 80_635 >> 28) & 1; // round(2v/q) mod 2, no division
+            let bit = ((((v << 1) + 1665) * 80_635) >> 28) & 1; // round(2v/q) mod 2, no division
             msg[i] |= (bit as u8) << j;
         }
     }
@@ -1099,15 +1047,24 @@ fn kyber_decaps(sk: &SecretKey, ct: &Ciphertext, consts: &NTTConstants) -> [u8; 
 
 // Matches pqcrystals-kyber_kyber512_ref ntt.c exactly (0-indexed).
 // NTT uses k=1..127 (zetas[1..127]); basemul uses zetas[64+i] for i=0..63.
+#[rustfmt::skip]
 static ZETAS_I16: [i16; 128] = [
-    -1044, -758, -359, -1517, 1493, 1422, 287, 202, -171, 622, 1577, 182, 962, -1202, -1474, 1468,
-    573, -1325, 264, 383, -829, 1458, -1602, -130, -681, 1017, 732, 608, -1542, 411, -205, -1571,
-    1223, 652, -552, 1015, -1293, 1491, -282, -1544, 516, -8, -320, -666, -1618, -1162, 126, 1469,
-    -853, -90, -271, 830, 107, -1421, -247, -951, -398, 961, -1508, -725, 448, -1065, 677, -1275,
-    -1103, 430, 555, 843, -1251, 871, 1550, 105, 422, 587, 177, -235, -291, -460, 1574, 1653, -246,
-    778, 1159, -147, -777, 1483, -602, 1119, -1590, 644, -872, 349, 418, 329, -156, -75, 817, 1097,
-    603, 610, 1322, -1285, -1465, 384, -1215, -136, 1218, -1335, -874, 220, -1187, -1659, -1185,
-    -1530, -1278, 794, -1510, -854, -870, 478, -108, -308, 996, 991, 958, -1460, 1522, 1628,
+   -1044,  -758,  -359, -1517,  1493,  1422,   287,   202,
+    -171,   622,  1577,   182,   962, -1202, -1474,  1468,
+     573, -1325,   264,   383,  -829,  1458, -1602,  -130,
+    -681,  1017,   732,   608, -1542,   411,  -205, -1571,
+    1223,   652,  -552,  1015, -1293,  1491,  -282, -1544,
+     516,    -8,  -320,  -666, -1618, -1162,   126,  1469,
+    -853,   -90,  -271,   830,   107, -1421,  -247,  -951,
+    -398,   961, -1508,  -725,   448, -1065,   677, -1275,
+   -1103,   430,   555,   843, -1251,   871,  1550,   105,
+     422,   587,   177,  -235,  -291,  -460,  1574,  1653,
+    -246,   778,  1159,  -147,  -777,  1483,  -602,  1119,
+   -1590,   644,  -872,   349,   418,   329,  -156,   -75,
+     817,  1097,   603,   610,  1322, -1285, -1465,   384,
+   -1215,  -136,  1218, -1335,  -874,   220, -1187, -1659,
+   -1185, -1530, -1278,   794, -1510,  -854,  -870,   478,
+    -108,  -308,   996,   991,   958, -1460,  1522,  1628,
 ];
 
 // Montgomery multiply: a*b*2^{-16} mod 3329, result in (-q, q).
@@ -1180,9 +1137,7 @@ fn intt_i16_scalar(r: &mut [i16; 256]) {
         let mut start = 0usize;
         while start < 256 {
             let zeta = ZETAS_I16[k];
-            if k > 0 {
-                k -= 1;
-            }
+            k = k.saturating_sub(1);
             for j in start..start + len {
                 let t = r[j];
                 r[j] = barrett_s(t.wrapping_add(r[j + len]));
@@ -1434,9 +1389,7 @@ mod neon_poly {
             let mut start = 0usize;
             while start < 256 {
                 let zeta_vec = vdupq_n_s16(ZETAS_I16[k]);
-                if k > 0 {
-                    k -= 1;
-                }
+                k = k.saturating_sub(1);
                 let mut j = start;
                 while j < start + len {
                     let top = vld1q_s16(r.as_ptr().add(j));
@@ -1613,31 +1566,14 @@ fn ct_from_bytes(c: &[u8]) -> Ciphertext16 {
 mod keccak_x2 {
     use std::arch::aarch64::*;
 
+    #[rustfmt::skip]
     const RC: [u64; 24] = [
-        0x0000000000000001,
-        0x0000000000008082,
-        0x800000000000808a,
-        0x8000000080008000,
-        0x000000000000808b,
-        0x0000000080000001,
-        0x8000000080008081,
-        0x8000000000008009,
-        0x000000000000008a,
-        0x0000000000000088,
-        0x0000000080008009,
-        0x000000008000000a,
-        0x000000008000808b,
-        0x800000000000008b,
-        0x8000000000008089,
-        0x8000000000008003,
-        0x8000000000008002,
-        0x8000000000000080,
-        0x000000000000800a,
-        0x800000008000000a,
-        0x8000000080008081,
-        0x8000000000008080,
-        0x0000000080000001,
-        0x8000000080008008,
+        0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
+        0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
+        0x000000000000008a, 0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
+        0x000000008000808b, 0x800000000000008b, 0x8000000000008089, 0x8000000000008003,
+        0x8000000000008002, 0x8000000000000080, 0x000000000000800a, 0x800000008000000a,
+        0x8000000080008081, 0x8000000000008080, 0x0000000080000001, 0x8000000080008008,
     ];
 
     /// Two independent Keccak-f1600 permutations, one per 64-bit lane.
@@ -1887,18 +1823,17 @@ fn gen_poly_uniform_pair_i16(rho: &[u8; 32], a: (u8, u8), b: (u8, u8)) -> (Poly1
 
 fn gen_matrix_i16(rho: &[u8; 32]) -> [[Poly16; KYBER_K]; KYBER_K] {
     #[cfg(target_arch = "aarch64")]
-    {
+    let a = {
         // KYBER_K = 2, so the four entries pair up row by row.
         let (a00, a01) = gen_poly_uniform_pair_i16(rho, (0, 0), (0, 1));
         let (a10, a11) = gen_poly_uniform_pair_i16(rho, (1, 0), (1, 1));
-        return [[a00, a01], [a10, a11]];
-    }
+        [[a00, a01], [a10, a11]]
+    };
     #[cfg(not(target_arch = "aarch64"))]
-    {
-        std::array::from_fn(|i| {
-            std::array::from_fn(|j| gen_poly_uniform_i16(rho, i as u8, j as u8))
-        })
-    }
+    let a = std::array::from_fn(|i| {
+        std::array::from_fn(|j| gen_poly_uniform_i16(rho, i as u8, j as u8))
+    });
+    a
 }
 
 // CBD(η=2): returns centered coefficients as i16.
@@ -2201,7 +2136,7 @@ fn msg_decode_i16(p: &Poly16) -> [u8; 32] {
             t += (t >> 31) & 3329;
             t -= 3329;
             t += (t >> 31) & 3329;
-            let bit = (((((t as u32) << 1) + 1665) * 80_635 >> 28) & 1) as u8; // no division
+            let bit = ((((((t as u32) << 1) + 1665) * 80_635) >> 28) & 1) as u8; // no division
             msg[i] |= bit << j;
         }
     }

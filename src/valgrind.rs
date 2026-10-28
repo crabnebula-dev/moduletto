@@ -11,7 +11,7 @@
 //! where the client-request instruction sequence below is defined; elsewhere
 //! every function is a no-op and [`running`] returns `false`. The library
 //! itself never calls these except through the feature-gated hooks in
-//! [`crate::kem`]. `examples/valgrind_ct.rs` is the harness.
+//! [`crate::kem`] and [`crate::dsa`]. `examples/valgrind_ct.rs` is the harness.
 //!
 //! Memcheck does not model arithmetic timing: it cannot see a variable-time
 //! multiply or divide. It catches secret-dependent control flow and memory
@@ -32,7 +32,10 @@ fn client_request(default: u64, args: &[u64; 6]) -> u64 {
     // nothing of consequence; memcheck recognises the sequence and performs
     // the request described by the array in %rax, returning in %rdx.
     // SAFETY: the instructions touch only rdi (restored by the rotations) and
-    // leave rbx unchanged; the args array outlives the call.
+    // leave rbx unchanged; the args array outlives the call. The asm is not
+    // marked `readonly`, so the compiler treats it as a possible write to the
+    // memory it describes and reloads that memory afterwards: a value kept in
+    // a register across a `declassify` would still be undefined to memcheck.
     unsafe {
         core::arch::asm!(
             "rol rdi, 3",
@@ -43,7 +46,7 @@ fn client_request(default: u64, args: &[u64; 6]) -> u64 {
             in("rax") args.as_ptr(),
             inout("rdx") result,
             out("rdi") _,
-            options(nostack, readonly, preserves_flags)
+            options(nostack, preserves_flags)
         );
     }
     result
