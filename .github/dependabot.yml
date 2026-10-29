@@ -1,10 +1,29 @@
+# Updates are grouped so a cycle produces one PR per ecosystem and kind
+# (minor+patch, major, security) instead of one PR per package. Security
+# updates ignore the schedule and open as soon as an advisory lands.
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      cargo-minor-patch:
+        update-types: [minor, patch]
+      cargo-major:
+        update-types: [major]
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
+      actions-major:
+        update-types: [major]
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
