@@ -3,13 +3,15 @@
 //! Optimised modular arithmetic and NTT for lattice cryptography: a
 //! compile-time-fixed-modulus scalar type, a constant-time layer whose
 //! arithmetic is proved correct in Coq, a Kyber-parameter NTT with an ARM64
-//! NEON backend, and ML-KEM-512/768 (FIPS 203) in [`kem`].
+//! NEON backend, ML-KEM-512/768 (FIPS 203) in [`kem`], and pure ML-DSA-65
+//! (FIPS 204) in [`dsa`]. The Coq proofs cover the Kyber-parameter
+//! arithmetic and NTT only, not the ML-DSA NTT over q = 8380417.
 //!
 //! The constant-time claims in this crate describe the shape of the code (no
 //! secret-dependent branch, memory access or division), measured with dudect
 //! and checked under Valgrind (`examples/ct_dudect.rs`,
-//! `examples/valgrind_ct.rs`). On AArch64 the ML-KEM entry points also set
-//! `PSTATE.DIT`, because the multiplier's latency is operand-dependent
+//! `examples/valgrind_ct.rs`). On AArch64 the ML-KEM and ML-DSA entry points
+//! set `PSTATE.DIT`, because the multiplier's latency is operand-dependent
 //! without it; see [`dit`] and `README.md`, "Security".
 //!
 //! ## Benchmark results (Apple M5, Criterion, q = 3329, n = 256)
@@ -50,18 +52,26 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![allow(incomplete_features)]
 
-mod modn;
 pub mod dit;
+mod modn;
 pub mod modn_ct;
 pub mod ntt;
 
 pub use modn::ModN;
 pub use modn_ct::ConstantTimeOps;
-pub use ntt::{NTTPoly, KyberCoeff, KYBER_Q, KYBER_N};
+pub use ntt::{KyberCoeff, NTTPoly, KYBER_N, KYBER_Q};
+
+// Keccak-f[1600], SHA-3 and SHAKE (FIPS 202), shared by `kem` and `dsa`.
+#[cfg(feature = "std")]
+mod keccak;
 
 // ML-KEM-512 and ML-KEM-768 (FIPS 203) key encapsulation.
 #[cfg(feature = "std")]
 pub mod kem;
+
+// ML-DSA-65 (FIPS 204) signatures, pure ML-DSA only.
+#[cfg(feature = "std")]
+pub mod dsa;
 
 // WebAssembly bindings
 #[cfg(feature = "wasm")]
@@ -98,7 +108,7 @@ mod tests {
         assert_eq!(sum.value(), (1234 + 5678) % 3329);
 
         let product = a.ct_mul(b);
-        assert_eq!(product.value(), ((1234i64 * 5678) % 3329) as i64);
+        assert_eq!(product.value(), (1234i64 * 5678) % 3329);
     }
 
     #[test]

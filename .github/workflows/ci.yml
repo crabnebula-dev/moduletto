@@ -22,7 +22,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # stable
         with:
           toolchain: stable
-      - name: Tests, including the NIST ACVP ML-KEM vectors (release)
+          components: rustfmt, clippy
+      - name: Formatting
+        run: cargo fmt --check
+      - name: Clippy, warnings denied
+        run: |
+          cargo clippy --all-targets -- -D warnings
+          cargo clippy --all-targets --features getrandom -- -D warnings
+          # examples/ct_dudect.rs needs the bench-only ct-bench feature.
+          cargo clippy --all-targets --features ct-bench -- -D warnings
+      - name: Tests, including the NIST ACVP ML-KEM and ML-DSA vectors (release)
         run: cargo test --release
       - name: Tests with overflow checks (debug)
         run: cargo test
@@ -34,7 +43,9 @@ jobs:
           cargo rustc --lib --crate-type rlib --no-default-features
           cargo rustc --lib --crate-type rlib --no-default-features --features alloc
       - name: Examples build
-        run: cargo build --release --examples
+        run: |
+          cargo build --release --examples
+          cargo build --release --features ct-bench --example ct_dudect
 
   constant-time:
     # Two complementary checks of the secret-dependent paths; see
@@ -56,13 +67,49 @@ jobs:
         # threshold by a margin that shared-runner noise does not produce:
         # the classes are interleaved at random, so noise lands on both.
         run: |
-          cargo run --release --example ct_dudect | tee dudect.log
+          # The default shell is bash -e without pipefail, so a build failure
+          # or a panic (abort) in ct_dudect would otherwise leave tee's 0.
+          set -o pipefail
+          cargo run --release --features ct-bench --example ct_dudect | tee dudect.log
           # hw_mul64_zero_vs_random measures the CPU with DIT clear and is
           # expected to report a difference; it is not part of the gate.
-          awk '/max t =/ && !/hw_mul64_zero_vs_random / {
+          # The gate also fails unless all 11 benches reported exactly once
+          # (10 gated, 1 not) and the run printed its completion line. Update
+          # the counts when a bench is added; never to drop one.
+          awk '/max t =/ {
+                 name = $2
+                 if (name == "hw_mul64_zero_vs_random") { ungated++; next }
+                 if (!(name in seen)) distinct++; seen[name] = 1; gated++
                  match($0, /max t = [-+][0-9.]+/); t = substr($0, RSTART + 8, RLENGTH - 8) + 0;
                  if (t < 0) t = -t; if (t > worst) worst = t }
-               END { printf "worst gated |t| = %.3f\n", worst; exit (worst > 10) }' dudect.log
+               /^dudect benches complete/ { done = 1 }
+               END { printf "gated benches = %d (distinct %d), ungated = %d, complete = %d\n", gated, distinct, ungated, done
+                     printf "worst gated |t| = %.3f\n", worst
+                     exit (worst > 10 || gated != 10 || distinct != 10 || ungated != 1 || !done) }' dudect.log
+
+  fuzz:
+    # Builds every fuzz target and runs the ML-DSA ones (signature and key
+    # decoding, sign-then-verify round trips) for 30 seconds each. macOS
+    # arm64 covers the AArch64-only paths (two-lane SHA3 sampling, DIT).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # stable
+        with:
+          toolchain: nightly-2026-10-24
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Build the fuzz targets
+        run: cargo +nightly-2026-10-24 fuzz build
+      - name: Run the ML-DSA fuzz targets
+        run: |
+          for target in fuzz_dsa_sig_decode fuzz_dsa_key_decode fuzz_dsa_roundtrip; do
+            cargo +nightly-2026-10-24 fuzz run "$target" -- -max_total_time=30
+          done
 
   proofs:
     # Rocq type-checks the four proof files; the OCaml harness runs its checks.

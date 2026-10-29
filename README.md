@@ -1,6 +1,6 @@
 # Moduletto Native Smart
 
-Optimized rust-based modular arithmetic and NTT for lattice cryptography. Includes ML-KEM-512 and ML-KEM-768 (FIPS 203) with an ARM64 NEON-accelerated int16 NTT in constant time, as WASM, and with optional no_std.
+Optimized rust-based modular arithmetic and NTT for lattice cryptography. Includes ML-KEM-512 and ML-KEM-768 (FIPS 203) with an ARM64 NEON-accelerated int16 NTT in constant time, pure ML-DSA-65 (FIPS 204) signatures, as WASM, and with optional no_std. The `kem` and `dsa` modules need the `std` feature (on by default); the no_std builds provide the modular arithmetic and NTT only.
 
 ## ML-KEM API
 
@@ -22,11 +22,43 @@ each, plus 10 encapsulation-key and 10 decapsulation-key checks each.
 `tests/kat/extract.mjs` regenerates the vector files from an ACVP-Server
 checkout.
 
+## ML-DSA API
+
+`moduletto::dsa::ml_dsa_65` (feature `std`, on by default) is pure
+ML-DSA-65 (FIPS 204): public key 1952 bytes, private key 4032 bytes,
+signature 3309 bytes.
+
+```rust
+use moduletto::dsa::ml_dsa_65;
+
+// xi and rnd come from a CSPRNG; rnd = [0; 32] selects deterministic signing.
+let (pk, sk) = ml_dsa_65::keygen_internal(&xi);                  // Algorithm 6
+let sig = ml_dsa_65::sign(&sk, b"message", b"context", &rnd)?;  // Algorithm 2
+assert!(ml_dsa_65::verify(&pk, b"message", b"context", &sig));  // Algorithm 3
+```
+
+The context string may be at most 255 bytes. `sign_internal` and
+`verify_internal` take the formatted message M′ (Algorithms 7 and 8).
+`external_mu`, `sign_mu` and `verify_mu` support a message representative μ
+computed elsewhere. HashML-DSA (the pre-hash variant, Algorithms 4 and 5) is
+out of scope and not provided.
+
+`tests/dsa_kat.rs` runs the NIST ACVP vectors for ML-DSA-65: 25 keyGen
+cases, 90 sigGen cases and 45 sigVer cases. The sigGen cases cover the
+pure, internal and external-μ interfaces, each deterministic and hedged. The
+sigVer cases include 36 negative cases. The HashML-DSA groups are skipped.
+The same file checks the context limit, input lengths and single-bit changes
+to signatures, keys, messages and contexts.
+
 ## Security
 
 - **Randomness.** The `*_derand` functions take `d`, `z` and `m` from the
   caller, who must draw them from a CSPRNG. With the `getrandom` feature,
-  `keygen()` and `encaps(ek)` draw them from the operating system.
+  `keygen()` and `encaps(ek)` draw them from the operating system. ML-DSA
+  takes ξ and `rnd` from the caller in the same way; with `getrandom`,
+  `ml_dsa_65::keygen()`, `ml_dsa_65::keygen_into` and
+  `ml_dsa_65::sign_hedged()` draw them from the operating system. Prefer
+  `keygen_into`, which leaves no copy of the private key above the scrub.
 - **Secrets in memory.** Seeds, noise polynomials, Keccak states and the
   re-encryption state of decapsulation are wiped with `zeroize`; the internal
   key structs wipe themselves on drop; polynomials are transformed in place
@@ -35,35 +67,72 @@ checkout.
   compiler temporaries are cleared too (libsodium's `sodium_stackzero`
   approach; best effort, not a guarantee). The returned decapsulation key and
   shared secret are plain arrays: wrap them in `zeroize::Zeroizing` or wipe
-  them yourself.
+  them yourself. ML-DSA does the same for ρ′, K, s₁, s₂, t₀, ρ″, μ, the
+  mask y, the rejected candidate signatures and the Keccak states. It
+  scrubs 192 KiB of stack after key generation and signing. Measured from
+  the scrubbing frame on Apple M5, signing uses about 71 KiB in release
+  builds and 133 KiB in debug builds; `tests/stack_scrub.rs` checks the
+  coverage. `ml_dsa_65::keygen_internal` and `ml_dsa_65::keygen()` return
+  the private key as a plain array. The by-value return can leave copies of
+  it in frames above the scrub. `ml_dsa_65::keygen_internal_into` and
+  `ml_dsa_65::keygen_into` write it straight into storage you own instead.
+  Verification wipes its buffers for tr, μ, w′, the w₁′ encoding and the
+  recomputed c̃ (FIPS 204 section 3.6.3), and computes μ in place. It does
+  not scrub the stack. Copies in callee frames, such as the Keccak
+  permutation's locals, or in compiler spill slots can remain after it
+  returns.
 - **Timing: code shape.** Decapsulation has no secret-dependent branch,
   memory access or division. The implicit-rejection comparison and selection
   go through `subtle`, and the rounding divisions by q in message decoding and
   compression are fixed-point multiplications (the KyberSlash pattern). The
   `ct_*` operations in `modn_ct` and `ntt` are branchless by construction.
+  ML-DSA key generation and signing have no secret-dependent branch, memory
+  index or division either. `Decompose` and `Power2Round` are fixed-point,
+  and `SampleInBall` places each ±1 with a masked pass over the polynomial.
+  The four rejection checks run over every coefficient and fold into one
+  bit. Three decisions are branched on. The first is whether a signing
+  iteration is rejected, since FIPS 204 lets the loop count vary. The other
+  two are whether a candidate in `RejBoundedPoly` or `SampleInBall` is
+  rejected. This crate treats those as public, because rejected candidates
+  are independent of the accepted values. The loop count dominates signing
+  time, and its distribution depends on the private key, so two keys can
+  differ in mean signing time. The claim is that signing time does not
+  depend on secrets at a given loop count. `ExpandA` over the public seed ρ
+  is variable-time, as in ML-KEM. Verification is not constant-time: it
+  treats its inputs as public.
 - **Timing: hardware.** Branch-free code is constant-time only if the
   instructions are. On AArch64 that holds for the listed instructions only
   while `PSTATE.DIT` is set: on Apple M5 a dependent chain of 64-bit
   multiplies takes ~25% longer on zero operands than on random ones with DIT
-  clear, and the same time with DIT set. The ML-KEM entry points therefore run
-  under `moduletto::dit::with_dit`, which sets the bit for the call and
-  restores it (a no-op off AArch64, or where FEAT_DIT is absent). Wrap your
-  own secret computations on `modn_ct`/`ntt` in `with_dit` too. On Apple M3
-  and later DIT also disables the data-memory-dependent prefetcher (GoFetch).
-- **Timing: verification.** Two checks, both run in CI:
+  clear, and the same time with DIT set. The ML-KEM and ML-DSA entry points
+  therefore run under `moduletto::dit::with_dit`, which sets the bit for the
+  call and restores it (a no-op off AArch64, or where FEAT_DIT is absent).
+  Wrap your own secret computations on `modn_ct`/`ntt` in `with_dit` too. On
+  Apple M3 and later DIT also disables the data-memory-dependent prefetcher
+  (GoFetch).
+- **Timing: verification.** Two checks, both configured in CI:
   `examples/ct_dudect.rs` is a [dudect](https://github.com/oreparaz/dudect)
   statistical test (Welch's t on interleaved input classes; |t| > 4.5 means a
   leak) over decapsulation valid-vs-tampered and fixed-vs-random message,
-  encapsulation, the NTT and the field operations, plus a CPU-only bench that
-  shows the multiplier effect above with and without DIT.
+  encapsulation, ML-DSA-65 signing under two private keys at the same
+  rejection-loop count (feature `ct-bench`), the NTT and the field
+  operations, plus a CPU-only bench that shows the multiplier effect above
+  with and without DIT.
   `examples/valgrind_ct.rs` is a ctgrind-style check: secrets are marked
   undefined for Valgrind memcheck, which reports any branch or memory address
   that depends on them (feature `valgrind-ct`, x86-64 Linux, scalar path).
-  Measured results are in [audits/](audits/).
+  It covers ML-KEM key generation, encapsulation and decapsulation, and
+  ML-DSA-65 key generation and signing, with rejected iterations included.
+  The ML-DSA cases first passed under Valgrind in the CI constant-time job
+  on 2026-10-28 (GitHub Actions run 40753126905).
+  Measured ML-KEM results are in [audits/](audits/). The ML-DSA additions
+  have no audit entry yet; the dudect figures measured while writing them
+  are in the header of `examples/ct_dudect.rs`.
 
   ```bash
-  cargo run --release --example ct_dudect                  # all benches once
-  cargo run --release --example ct_dudect -- --continuous decaps_valid_vs_tampered_768
+  cargo run --release --features ct-bench --example ct_dudect     # all benches once
+  cargo run --release --features ct-bench --example ct_dudect -- \
+    --continuous decaps_valid_vs_tampered_768
   # x86-64 Linux:
   cargo build --release --features valgrind-ct --example valgrind_ct
   valgrind --tool=memcheck --error-exitcode=1 -q target/release/examples/valgrind_ct
@@ -161,8 +230,10 @@ required. See [BENCHMARKS.md](BENCHMARKS.md) for the measurement history.
 - **`modn.rs`** -- Generic `ModN<N>` type for modular arithmetic over any modulus < 2^31. Variable-time operations using i64 native register arithmetic (3x faster than i128).
 - **`modn_ct.rs`** -- Constant-time variant of `ModN` with side-channel resistant operations, backed by `subtle` optimisation barriers (built with `core_hint_black_box`, so the barrier is a register fence rather than a stack round-trip).
 - **`ntt.rs`** -- Number Theoretic Transform for `ModN<N>` polynomials (degree 256). Cooley-Tukey/Gentleman-Sande butterflies over a lazy, redundant coefficient representation, with a fully vectorised ARM64 NEON int16 backend and a portable i64 fallback. Both backends are cross-checked against each other in the test suite.
-- **`dit.rs`** -- `with_dit`: runs a closure with AArch64 `PSTATE.DIT` set, so the instructions the architecture lists are data-independent in timing. Used by every ML-KEM entry point.
+- **`dit.rs`** -- `with_dit`: runs a closure with AArch64 `PSTATE.DIT` set, so the instructions the architecture lists are data-independent in timing. Used by every ML-KEM and ML-DSA entry point.
+- **`keccak.rs`** -- Keccak-f[1600], SHA-3 and SHAKE (FIPS 202), translated from XKCP, with a two-lane FEAT_SHA3 variant on AArch64. Shared by `kem` and `dsa`.
 - **`kem.rs`** -- ML-KEM-512 and ML-KEM-768 (FIPS 203): the NEON int16 path with inline Keccak, zeroization, stack scrub and DIT. Optional RNG-backed API behind `getrandom`.
+- **`dsa.rs`** -- Pure ML-DSA-65 (FIPS 204): a 32-bit Montgomery NTT over q = 8380417 with the FIPS 204 zetas, the pure, internal and external-μ interfaces, deterministic and hedged signing, zeroization, stack scrub and DIT. Optional RNG-backed API behind `getrandom`.
 - **`valgrind.rs`** -- Valgrind client requests (poison, declassify) for the ctgrind-style check; feature `valgrind-ct`.
 - **`wasm.rs`** -- Optional WebAssembly bindings via `wasm-bindgen`.
 
@@ -236,18 +307,19 @@ cargo bench
 cargo test --lib --no-default-features --release
 
 # Timing checks (see Security)
-cargo run --release --example ct_dudect
+cargo run --release --features ct-bench --example ct_dudect
 ```
 
 ## Feature Flags
 
 | Feature | Description |
 |---------|-------------|
-| `std` (default) | Standard library support; enables the `kem` module |
+| `std` (default) | Standard library support; enables the `kem` and `dsa` modules |
 | `alloc` | Heap allocation + `libm` for no_std math |
 | `wasm` | WebAssembly bindings via `wasm-bindgen` |
-| `getrandom` | `kem::*::keygen()` and `encaps(ek)` backed by the OS CSPRNG |
+| `getrandom` | `kem::*::keygen()`, `encaps(ek)`, `dsa::ml_dsa_65::keygen()`, `keygen_into` and `sign_hedged()` backed by the OS CSPRNG |
 | `valgrind-ct` | Valgrind memcheck hooks for `examples/valgrind_ct.rs` (x86-64 Linux); not for production builds |
+| `ct-bench` | Exposes the public ML-DSA signing-loop count to `examples/ct_dudect.rs`. Not for production |
 
 ```toml
 # Default (std)
@@ -262,7 +334,7 @@ moduletto = { version = "0.1", default-features = false, features = ["alloc"] }
 # WebAssembly
 moduletto = { version = "0.1", features = ["wasm"] }
 
-# ML-KEM with OS randomness
+# ML-KEM and ML-DSA with OS randomness
 moduletto = { version = "0.1", features = ["getrandom"] }
 ```
 
@@ -291,6 +363,13 @@ The arithmetic behind the constant-time layer is proved functionally correct
 in Coq (Rocq 9.1), with an accompanying OCaml test harness. The proofs cover
 what the branchless formulas compute, not the timing of compiled code (see
 [Security](#security)).
+
+The proofs cover the Kyber-parameter arithmetic (q = 3329) and NTT. They do
+not yet cover ML-DSA: its NTT over q = 8380417, the Montgomery reduction and
+the `Decompose` and `Power2Round` formulas in `src/dsa.rs` are checked by
+unit tests instead. Those tests compare the NTT with a schoolbook product
+and with Algorithm 41 as written, and compare `Decompose` and `Power2Round`
+with Algorithms 36 and 35 for every input in [0, q).
 
 ### Prerequisites
 
@@ -378,6 +457,12 @@ done
 | `fuzz_ntt_roundtrip` | NTT -> INTT roundtrip for arbitrary polynomials, CT vs VT NTT agreement |
 | `fuzz_ct_primitives` | ct_select, ct_swap, ct_eq, ct_lt: specification compliance, reflexivity, double-swap identity |
 | `fuzz_poly_mul` | NTT polynomial multiplication vs schoolbook (ground truth), CT vs VT agreement |
+| `fuzz_dsa_sig_decode` | ML-DSA-65 signature decoding (sigDecode, HintBitUnpack): arbitrary and spliced signatures verify only if they equal the real one |
+| `fuzz_dsa_key_decode` | ML-DSA-65 key decoding: arbitrary and spliced public keys verify only if they equal the real one; spliced private keys sign deterministically without panicking |
+| `fuzz_dsa_roundtrip` | ML-DSA-65 key generation, signing and verification from fuzzed ξ, rnd, context and message, across the pure, internal and external-μ interfaces |
+
+CI (the `fuzz` job in `.github/workflows/ci.yml`) builds every target with
+`nightly-2026-10-24` and runs the three ML-DSA targets for 30 seconds each.
 
 Crash artifacts are saved to `fuzz/artifacts/<target>/` and can be replayed with:
 
@@ -407,8 +492,11 @@ dual licensed as above, without any additional terms or conditions.
 
 ### Third-party material
 
-- The inline Keccak-f[1600] in `src/kem.rs` is translated from the XKCP
+- The inline Keccak-f[1600] in `src/keccak.rs` is translated from the XKCP
   (eXtended Keccak Code Package), released to the public domain.
 - The int16 NTT constants and structure follow the pqcrystals Kyber reference
   implementation (CC0-1.0 or Apache-2.0).
+- The ML-DSA zetas are those of FIPS 204 Appendix B. The `reduce32` and
+  `Decompose` formulas in `src/dsa.rs` follow the pqcrystals Dilithium
+  reference implementation (CC0-1.0 or Apache-2.0).
 - `tests/kat/` holds NIST ACVP-Server test vectors (a US Government work).

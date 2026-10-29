@@ -19,9 +19,13 @@
 //! - Polynomial compression (10-bit u, 4-bit v)
 //! - Full keygen, encaps, decaps with re-encryption in decaps
 
+#![allow(clippy::needless_range_loop)]
+
 use moduletto::ntt::{KyberCoeff, NTTConstants, NTTPoly, KYBER_N, KYBER_Q};
 use sha3::digest::{ExtendableOutput, FixedOutput, Update, XofReader};
-use sha3::{Sha3_256 as Sha3_256Hw, Sha3_512 as Sha3_512Hw, Shake128 as Shake128Hw, Shake256 as Shake256Hw};
+use sha3::{
+    Sha3_256 as Sha3_256Hw, Sha3_512 as Sha3_512Hw, Shake128 as Shake128Hw, Shake256 as Shake256Hw,
+};
 use std::time::Instant;
 
 const KYBER_K: usize = 2; // Kyber-512
@@ -44,6 +48,7 @@ const KYBER_K: usize = 2; // Kyber-512
 // The 25 source indices across the 5 rows are all distinct, so in-place is safe.
 
 #[inline(always)]
+#[rustfmt::skip]
 fn keccak_f1600(s: &mut [u64; 25]) {
 
     const RC: [u64; 24] = [
@@ -178,7 +183,7 @@ fn xor_bytes_at(s: &mut [u64; 25], offset: usize, data: &[u8]) {
 #[inline]
 fn xor_lanes(s: &mut [u64; 25], data: &[u8], lane_count: usize) {
     for i in 0..lane_count {
-        s[i] ^= u64::from_le_bytes(data[8*i..8*i+8].try_into().unwrap());
+        s[i] ^= u64::from_le_bytes(data[8 * i..8 * i + 8].try_into().unwrap());
     }
 }
 
@@ -186,12 +191,12 @@ fn xor_lanes(s: &mut [u64; 25], data: &[u8], lane_count: usize) {
 fn extract_bytes(s: &[u64; 25], out: &mut [u8]) {
     let full = out.len() / 8;
     for i in 0..full {
-        out[8*i..8*i+8].copy_from_slice(&s[i].to_le_bytes());
+        out[8 * i..8 * i + 8].copy_from_slice(&s[i].to_le_bytes());
     }
     let rem = out.len() & 7;
     if rem > 0 {
         let lane = s[full].to_le_bytes();
-        out[full*8..].copy_from_slice(&lane[..rem]);
+        out[full * 8..].copy_from_slice(&lane[..rem]);
     }
 }
 
@@ -199,7 +204,7 @@ fn extract_bytes(s: &[u64; 25], out: &mut [u8]) {
 fn keccak_sponge(rate: usize, inputs: &[&[u8]], domain: u8, output: &mut [u8]) {
     let mut s = [0u64; 25];
     let lane_rate = rate / 8; // rate is always a multiple of 8 for SHA3/SHAKE
-    let mut pos = 0usize;     // byte offset within current rate block
+    let mut pos = 0usize; // byte offset within current rate block
 
     for &data in inputs {
         let mut d = data;
@@ -274,7 +279,11 @@ impl ShakeStream {
         s[pos >> 3] ^= (domain as u64) << ((pos & 7) * 8);
         s[(rate - 1) >> 3] ^= 0x80u64 << (((rate - 1) & 7) * 8);
         keccak_f1600(&mut s);
-        Self { s, rate, permute_pending: false }
+        Self {
+            s,
+            rate,
+            permute_pending: false,
+        }
     }
 
     fn squeeze_block(&mut self, out: &mut [u8]) {
@@ -317,25 +326,33 @@ fn shake256(inputs: &[&[u8]], output: &mut [u8]) {
 
 fn sha3_256_hw(inputs: &[&[u8]]) -> [u8; 32] {
     let mut h = Sha3_256Hw::default();
-    for &d in inputs { h.update(d); }
+    for &d in inputs {
+        h.update(d);
+    }
     h.finalize_fixed().into()
 }
 
 fn sha3_512_hw(inputs: &[&[u8]]) -> [u8; 64] {
     let mut h = Sha3_512Hw::default();
-    for &d in inputs { h.update(d); }
+    for &d in inputs {
+        h.update(d);
+    }
     h.finalize_fixed().into()
 }
 
 fn shake128_hw(inputs: &[&[u8]], output: &mut [u8]) {
     let mut h = Shake128Hw::default();
-    for &d in inputs { h.update(d); }
+    for &d in inputs {
+        h.update(d);
+    }
     h.finalize_xof().read(output);
 }
 
 fn shake256_hw(inputs: &[&[u8]], output: &mut [u8]) {
     let mut h = Shake256Hw::default();
-    for &d in inputs { h.update(d); }
+    for &d in inputs {
+        h.update(d);
+    }
     h.finalize_xof().read(output);
 }
 
@@ -357,8 +374,14 @@ fn gen_poly_uniform_hw(rho: &[u8; 32], i: u8, j: u8) -> NTTPoly {
         let d1 = (buf[pos] as i64) | ((buf[pos + 1] as i64 & 0x0F) << 8);
         let d2 = (buf[pos + 1] as i64 >> 4) | ((buf[pos + 2] as i64) << 4);
         pos += 3;
-        if d1 < KYBER_Q && count < KYBER_N { coeffs[count] = KyberCoeff::new(d1); count += 1; }
-        if d2 < KYBER_Q && count < KYBER_N { coeffs[count] = KyberCoeff::new(d2); count += 1; }
+        if d1 < KYBER_Q && count < KYBER_N {
+            coeffs[count] = KyberCoeff::new(d1);
+            count += 1;
+        }
+        if d2 < KYBER_Q && count < KYBER_N {
+            coeffs[count] = KyberCoeff::new(d2);
+            count += 1;
+        }
     }
     NTTPoly::new(coeffs)
 }
@@ -369,43 +392,80 @@ fn gen_matrix_hw(rho: &[u8; 32]) -> [[NTTPoly; KYBER_K]; KYBER_K] {
 
 fn kyber_keygen_hw(d: &[u8; 32], z: &[u8; 32], consts: &NTTConstants) -> SecretKey {
     let g = sha3_512_hw(&[d.as_slice(), &[KYBER_K as u8]]);
-    let mut rho = [0u8; 32]; let mut sigma = [0u8; 32];
-    rho.copy_from_slice(&g[..32]); sigma.copy_from_slice(&g[32..]);
+    let mut rho = [0u8; 32];
+    let mut sigma = [0u8; 32];
+    rho.copy_from_slice(&g[..32]);
+    sigma.copy_from_slice(&g[32..]);
     let a_hat = gen_matrix_hw(&rho);
     let mut nonce = 0u8;
-    let s_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| { let p = prf_cbd3_hw(&sigma, nonce); nonce += 1; p });
-    let e_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| { let p = prf_cbd3_hw(&sigma, nonce); nonce += 1; p });
+    let s_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| {
+        let p = prf_cbd3_hw(&sigma, nonce);
+        nonce += 1;
+        p
+    });
+    let e_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| {
+        let p = prf_cbd3_hw(&sigma, nonce);
+        nonce += 1;
+        p
+    });
     let s_hat: [NTTPoly; KYBER_K] = std::array::from_fn(|i| s_poly[i].ntt());
     let e_hat: [NTTPoly; KYBER_K] = std::array::from_fn(|i| e_poly[i].ntt());
     let mut t_hat = matvec(&a_hat, &s_hat, consts);
-    for i in 0..KYBER_K { t_hat[i] = t_hat[i].add(&e_hat[i]); }
+    for i in 0..KYBER_K {
+        t_hat[i] = t_hat[i].add(&e_hat[i]);
+    }
     let mut pk_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 384 + 32);
-    for i in 0..KYBER_K { let mut enc = [0u8; 384]; poly_to_bytes(&t_hat[i], &mut enc); pk_bytes.extend_from_slice(&enc); }
+    for i in 0..KYBER_K {
+        let mut enc = [0u8; 384];
+        poly_to_bytes(&t_hat[i], &mut enc);
+        pk_bytes.extend_from_slice(&enc);
+    }
     pk_bytes.extend_from_slice(&rho);
     let h_pk = sha3_256_hw(&[&pk_bytes]);
-    SecretKey { s_hat, pk: PublicKey { t_hat, rho, h_pk }, z: *z }
+    SecretKey {
+        s_hat,
+        pk: PublicKey { t_hat, rho, h_pk },
+        z: *z,
+    }
 }
 
 fn kyber_encaps_hw(pk: &PublicKey, m: &[u8; 32], consts: &NTTConstants) -> (Ciphertext, [u8; 32]) {
     // FIPS 203 Alg. 17 (ML-KEM.Encaps_internal): (K, r) = G(m ‖ H(ek)).
     // Round-3 Kyber hashed m first; FIPS 203 uses it directly.
     let g = sha3_512_hw(&[m.as_slice(), pk.h_pk.as_slice()]);
-    let mut k_bar = [0u8; 32]; let mut r_seed = [0u8; 32];
-    k_bar.copy_from_slice(&g[..32]); r_seed.copy_from_slice(&g[32..]);
+    let mut k_bar = [0u8; 32];
+    let mut r_seed = [0u8; 32];
+    k_bar.copy_from_slice(&g[..32]);
+    r_seed.copy_from_slice(&g[32..]);
     let a_hat = gen_matrix_hw(&pk.rho);
     let mut nonce = 0u8;
-    let r_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| { let p = prf_cbd3_hw(&r_seed, nonce); nonce += 1; p });
-    let e1_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| { let p = prf_cbd_hw(&r_seed, nonce); nonce += 1; p });
+    let r_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| {
+        let p = prf_cbd3_hw(&r_seed, nonce);
+        nonce += 1;
+        p
+    });
+    let e1_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| {
+        let p = prf_cbd_hw(&r_seed, nonce);
+        nonce += 1;
+        p
+    });
     let e2 = prf_cbd_hw(&r_seed, nonce);
     let r_hat: [NTTPoly; KYBER_K] = std::array::from_fn(|i| r_poly[i].ntt());
     let u_hat = matvec_transpose(&a_hat, &r_hat, consts);
     let u_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|i| u_hat[i].intt().add(&e1_poly[i]));
     let v_hat = inner_product(&pk.t_hat, &r_hat, consts);
     let v_poly = v_hat.intt().add(&e2).add(&msg_encode(m));
-    let u_enc: [[u8; 320]; KYBER_K] = std::array::from_fn(|i| { let mut buf = [0u8; 320]; poly_compress(&u_poly[i], 10, &mut buf); buf });
-    let mut v_enc = [0u8; 128]; poly_compress(&v_poly, 4, &mut v_enc);
+    let u_enc: [[u8; 320]; KYBER_K] = std::array::from_fn(|i| {
+        let mut buf = [0u8; 320];
+        poly_compress(&u_poly[i], 10, &mut buf);
+        buf
+    });
+    let mut v_enc = [0u8; 128];
+    poly_compress(&v_poly, 4, &mut v_enc);
     let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
-    for ue in &u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
+    for ue in &u_enc {
+        ct_bytes.extend_from_slice(ue.as_slice());
+    }
     ct_bytes.extend_from_slice(&v_enc);
     // FIPS 203: shared secret is K directly (round-3's final KDF is gone).
     let ss = k_bar;
@@ -421,11 +481,19 @@ fn kyber_decaps_hw(sk: &SecretKey, ct: &Ciphertext, consts: &NTTConstants) -> [u
     let (ct_prime, ss_prime) = kyber_encaps_hw(&sk.pk, &m_prime, consts);
     // All-or-nothing rejection mask; see kyber_decaps for the reasoning.
     let mut diff: u8 = 0;
-    for i in 0..KYBER_K { for (a, b) in ct.u_enc[i].iter().zip(ct_prime.u_enc[i].iter()) { diff |= a ^ b; } }
-    for (a, b) in ct.v_enc.iter().zip(ct_prime.v_enc.iter()) { diff |= a ^ b; }
+    for i in 0..KYBER_K {
+        for (a, b) in ct.u_enc[i].iter().zip(ct_prime.u_enc[i].iter()) {
+            diff |= a ^ b;
+        }
+    }
+    for (a, b) in ct.v_enc.iter().zip(ct_prime.v_enc.iter()) {
+        diff |= a ^ b;
+    }
     let reject = ((diff as u16).wrapping_neg() >> 8) as u8;
     let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
-    for ue in &ct.u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
+    for ue in &ct.u_enc {
+        ct_bytes.extend_from_slice(ue.as_slice());
+    }
     ct_bytes.extend_from_slice(&ct.v_enc);
     // FIPS 203 Alg. 18 (ML-KEM.Decaps_internal): the implicit-rejection key is
     // J(z ‖ c) = SHAKE256(z ‖ c, 32) over the whole ciphertext — not a SHA3-256
@@ -433,43 +501,74 @@ fn kyber_decaps_hw(sk: &SecretKey, ct: &Ciphertext, consts: &NTTConstants) -> [u
     let mut ss_reject = [0u8; 32];
     shake256_hw(&[sk.z.as_slice(), &ct_bytes], &mut ss_reject);
     let mut ss = [0u8; 32];
-    for i in 0..32 { ss[i] = (ss_prime[i] & !reject) | (ss_reject[i] & reject); }
+    for i in 0..32 {
+        ss[i] = (ss_prime[i] & !reject) | (ss_reject[i] & reject);
+    }
     ss
 }
 
 // ── Basemul helpers (amortized NTT approach) ─────────────────────────────────
 
-fn basemul_acc(acc: &mut [KyberCoeff; KYBER_N], a: &[KyberCoeff; KYBER_N], b: &[KyberCoeff; KYBER_N], consts: &NTTConstants) {
+fn basemul_acc(
+    acc: &mut [KyberCoeff; KYBER_N],
+    a: &[KyberCoeff; KYBER_N],
+    b: &[KyberCoeff; KYBER_N],
+    consts: &NTTConstants,
+) {
     for i in (0..KYBER_N).step_by(2) {
         let zeta = consts.zetas[128 + i / 2];
-        let a0 = a[i];     let a1 = a[i + 1];
-        let b0 = b[i];     let b1 = b[i + 1];
-        acc[i]     = acc[i]     + a0 * b0 + zeta * a1 * b1;
+        let a0 = a[i];
+        let a1 = a[i + 1];
+        let b0 = b[i];
+        let b1 = b[i + 1];
+        acc[i] = acc[i] + a0 * b0 + zeta * a1 * b1;
         acc[i + 1] = acc[i + 1] + a0 * b1 + a1 * b0;
     }
 }
 
-fn matvec(a_hat: &[[NTTPoly; KYBER_K]; KYBER_K], v_hat: &[NTTPoly; KYBER_K], consts: &NTTConstants) -> [NTTPoly; KYBER_K] {
+fn matvec(
+    a_hat: &[[NTTPoly; KYBER_K]; KYBER_K],
+    v_hat: &[NTTPoly; KYBER_K],
+    consts: &NTTConstants,
+) -> [NTTPoly; KYBER_K] {
     let mut result: [NTTPoly; KYBER_K] = std::array::from_fn(|_| NTTPoly::zero());
     for i in 0..KYBER_K {
         for j in 0..KYBER_K {
-            basemul_acc(&mut result[i].coeffs, &a_hat[i][j].coeffs, &v_hat[j].coeffs, consts);
+            basemul_acc(
+                &mut result[i].coeffs,
+                &a_hat[i][j].coeffs,
+                &v_hat[j].coeffs,
+                consts,
+            );
         }
     }
     result
 }
 
-fn matvec_transpose(a_hat: &[[NTTPoly; KYBER_K]; KYBER_K], v_hat: &[NTTPoly; KYBER_K], consts: &NTTConstants) -> [NTTPoly; KYBER_K] {
+fn matvec_transpose(
+    a_hat: &[[NTTPoly; KYBER_K]; KYBER_K],
+    v_hat: &[NTTPoly; KYBER_K],
+    consts: &NTTConstants,
+) -> [NTTPoly; KYBER_K] {
     let mut result: [NTTPoly; KYBER_K] = std::array::from_fn(|_| NTTPoly::zero());
     for i in 0..KYBER_K {
         for j in 0..KYBER_K {
-            basemul_acc(&mut result[i].coeffs, &a_hat[j][i].coeffs, &v_hat[j].coeffs, consts);
+            basemul_acc(
+                &mut result[i].coeffs,
+                &a_hat[j][i].coeffs,
+                &v_hat[j].coeffs,
+                consts,
+            );
         }
     }
     result
 }
 
-fn inner_product(a_hat: &[NTTPoly; KYBER_K], b_hat: &[NTTPoly; KYBER_K], consts: &NTTConstants) -> NTTPoly {
+fn inner_product(
+    a_hat: &[NTTPoly; KYBER_K],
+    b_hat: &[NTTPoly; KYBER_K],
+    consts: &NTTConstants,
+) -> NTTPoly {
     let mut acc = NTTPoly::zero();
     for j in 0..KYBER_K {
         basemul_acc(&mut acc.coeffs, &a_hat[j].coeffs, &b_hat[j].coeffs, consts);
@@ -492,8 +591,14 @@ fn gen_poly_uniform(rho: &[u8; 32], i: u8, j: u8) -> NTTPoly {
         let d1 = (buf[pos] as i64) | ((buf[pos + 1] as i64 & 0x0F) << 8);
         let d2 = (buf[pos + 1] as i64 >> 4) | ((buf[pos + 2] as i64) << 4);
         pos += 3;
-        if d1 < KYBER_Q && count < KYBER_N { coeffs[count] = KyberCoeff::new(d1); count += 1; }
-        if d2 < KYBER_Q && count < KYBER_N { coeffs[count] = KyberCoeff::new(d2); count += 1; }
+        if d1 < KYBER_Q && count < KYBER_N {
+            coeffs[count] = KyberCoeff::new(d1);
+            count += 1;
+        }
+        if d2 < KYBER_Q && count < KYBER_N {
+            coeffs[count] = KyberCoeff::new(d2);
+            count += 1;
+        }
     }
     NTTPoly::new(coeffs) // already in NTT domain
 }
@@ -522,7 +627,8 @@ fn cbd_eta2(buf: &[u8; 128]) -> NTTPoly {
 fn cbd_eta3(buf: &[u8; 192]) -> NTTPoly {
     let mut coeffs = [KyberCoeff::zero(); KYBER_N];
     for i in 0..64 {
-        let t = (buf[3 * i] as u32) | ((buf[3 * i + 1] as u32) << 8) | ((buf[3 * i + 2] as u32) << 16);
+        let t =
+            (buf[3 * i] as u32) | ((buf[3 * i + 1] as u32) << 8) | ((buf[3 * i + 2] as u32) << 16);
         let mut d = t & 0x0024_9249;
         d += (t >> 1) & 0x0024_9249;
         d += (t >> 2) & 0x0024_9249;
@@ -561,7 +667,7 @@ fn poly_to_bytes(p: &NTTPoly, out: &mut [u8; 384]) {
     for i in 0..128 {
         let t0 = p.coeffs[2 * i].value() as u16;
         let t1 = p.coeffs[2 * i + 1].value() as u16;
-        out[3 * i]     = t0 as u8;
+        out[3 * i] = t0 as u8;
         out[3 * i + 1] = ((t0 >> 8) | (t1 << 4)) as u8;
         out[3 * i + 2] = (t1 >> 4) as u8;
     }
@@ -644,7 +750,7 @@ fn poly_decompress(bytes: &[u8], d: u32) -> NTTPoly {
                 ];
                 for k in 0..4 {
                     coeffs[4 * i + k] =
-                        KyberCoeff::new(((((t[k] & 0x3FF) as i64) * KYBER_Q + 512) >> 10) as i64);
+                        KyberCoeff::new((((t[k] & 0x3FF) as i64) * KYBER_Q + 512) >> 10);
                 }
             }
         }
@@ -675,7 +781,7 @@ fn msg_decode(p: &NTTPoly) -> [u8; 32] {
     for i in 0..32 {
         for j in 0..8 {
             let v = p.coeffs[8 * i + j].value() as u32; // canonical, [0, q)
-            let bit = (((v << 1) + 1665) * 80_635 >> 28) & 1; // round(2v/q) mod 2, no division
+            let bit = ((((v << 1) + 1665) * 80_635) >> 28) & 1; // round(2v/q) mod 2, no division
             msg[i] |= (bit as u8) << j;
         }
     }
@@ -686,14 +792,14 @@ fn msg_decode(p: &NTTPoly) -> [u8; 32] {
 
 struct PublicKey {
     t_hat: [NTTPoly; KYBER_K],
-    rho:   [u8; 32],
-    h_pk:  [u8; 32],
+    rho: [u8; 32],
+    h_pk: [u8; 32],
 }
 
 struct SecretKey {
     s_hat: [NTTPoly; KYBER_K],
-    pk:    PublicKey,
-    z:     [u8; 32],
+    pk: PublicKey,
+    z: [u8; 32],
 }
 
 struct Ciphertext {
@@ -784,7 +890,7 @@ fn ct_from_bytes_i64(c: &[u8]) -> Ciphertext {
 
 fn kyber_keygen(d: &[u8; 32], z: &[u8; 32], consts: &NTTConstants) -> SecretKey {
     let g = sha3_512(&[d.as_slice(), &[KYBER_K as u8]]);
-    let mut rho   = [0u8; 32];
+    let mut rho = [0u8; 32];
     let mut sigma = [0u8; 32];
     rho.copy_from_slice(&g[..32]);
     sigma.copy_from_slice(&g[32..]);
@@ -792,8 +898,16 @@ fn kyber_keygen(d: &[u8; 32], z: &[u8; 32], consts: &NTTConstants) -> SecretKey 
     let a_hat = gen_matrix(&rho);
 
     let mut nonce = 0u8;
-    let s_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| { let p = prf_cbd3(&sigma, nonce); nonce += 1; p });
-    let e_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| { let p = prf_cbd3(&sigma, nonce); nonce += 1; p });
+    let s_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| {
+        let p = prf_cbd3(&sigma, nonce);
+        nonce += 1;
+        p
+    });
+    let e_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| {
+        let p = prf_cbd3(&sigma, nonce);
+        nonce += 1;
+        p
+    });
 
     let s_hat: [NTTPoly; KYBER_K] = std::array::from_fn(|i| s_poly[i].ntt());
     let e_hat: [NTTPoly; KYBER_K] = std::array::from_fn(|i| e_poly[i].ntt());
@@ -821,10 +935,14 @@ fn kyber_keygen(d: &[u8; 32], z: &[u8; 32], consts: &NTTConstants) -> SecretKey 
 
 // ── Encapsulation ─────────────────────────────────────────────────────────────
 
-fn kyber_encaps_inner(pk: &PublicKey, m: &[u8; 32], consts: &NTTConstants) -> (Ciphertext, [u8; 32]) {
+fn kyber_encaps_inner(
+    pk: &PublicKey,
+    m: &[u8; 32],
+    consts: &NTTConstants,
+) -> (Ciphertext, [u8; 32]) {
     // FIPS 203 Alg. 17: (K, r) = G(m ‖ H(ek)), no pre-hash of m.
-    let g   = sha3_512(&[m.as_slice(), pk.h_pk.as_slice()]);
-    let mut k_bar  = [0u8; 32];
+    let g = sha3_512(&[m.as_slice(), pk.h_pk.as_slice()]);
+    let mut k_bar = [0u8; 32];
     let mut r_seed = [0u8; 32];
     k_bar.copy_from_slice(&g[..32]);
     r_seed.copy_from_slice(&g[32..]);
@@ -832,16 +950,24 @@ fn kyber_encaps_inner(pk: &PublicKey, m: &[u8; 32], consts: &NTTConstants) -> (C
     let a_hat = gen_matrix(&pk.rho);
 
     let mut nonce = 0u8;
-    let r_poly:  [NTTPoly; KYBER_K] = std::array::from_fn(|_| { let p = prf_cbd3(&r_seed, nonce); nonce += 1; p });
-    let e1_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| { let p = prf_cbd(&r_seed, nonce); nonce += 1; p });
+    let r_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| {
+        let p = prf_cbd3(&r_seed, nonce);
+        nonce += 1;
+        p
+    });
+    let e1_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|_| {
+        let p = prf_cbd(&r_seed, nonce);
+        nonce += 1;
+        p
+    });
     let e2 = prf_cbd(&r_seed, nonce);
 
     let r_hat: [NTTPoly; KYBER_K] = std::array::from_fn(|i| r_poly[i].ntt());
 
-    let u_hat  = matvec_transpose(&a_hat, &r_hat, consts);
+    let u_hat = matvec_transpose(&a_hat, &r_hat, consts);
     let u_poly: [NTTPoly; KYBER_K] = std::array::from_fn(|i| u_hat[i].intt().add(&e1_poly[i]));
 
-    let v_hat  = inner_product(&pk.t_hat, &r_hat, consts);
+    let v_hat = inner_product(&pk.t_hat, &r_hat, consts);
     let v_poly = v_hat.intt().add(&e2).add(&msg_encode(m));
 
     let u_enc: [[u8; 320]; KYBER_K] = std::array::from_fn(|i| {
@@ -853,7 +979,9 @@ fn kyber_encaps_inner(pk: &PublicKey, m: &[u8; 32], consts: &NTTConstants) -> (C
     poly_compress(&v_poly, 4, &mut v_enc);
 
     let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
-    for ue in &u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
+    for ue in &u_enc {
+        ct_bytes.extend_from_slice(ue.as_slice());
+    }
     ct_bytes.extend_from_slice(&v_enc);
     // FIPS 203: shared secret is K directly (round-3's final KDF is gone).
     let _ = &ct_bytes;
@@ -890,7 +1018,9 @@ fn kyber_decaps(sk: &SecretKey, ct: &Ciphertext, consts: &NTTConstants) -> [u8; 
     let reject = ((diff as u16).wrapping_neg() >> 8) as u8;
 
     let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
-    for ue in &ct.u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
+    for ue in &ct.u_enc {
+        ct_bytes.extend_from_slice(ue.as_slice());
+    }
     ct_bytes.extend_from_slice(&ct.v_enc);
     // FIPS 203 Alg. 18 (ML-KEM.Decaps_internal): the implicit-rejection key is
     // J(z ‖ c) = SHAKE256(z ‖ c, 32) over the whole ciphertext — not a SHA3-256
@@ -917,6 +1047,7 @@ fn kyber_decaps(sk: &SecretKey, ct: &Ciphertext, consts: &NTTConstants) -> [u8; 
 
 // Matches pqcrystals-kyber_kyber512_ref ntt.c exactly (0-indexed).
 // NTT uses k=1..127 (zetas[1..127]); basemul uses zetas[64+i] for i=0..63.
+#[rustfmt::skip]
 static ZETAS_I16: [i16; 128] = [
    -1044,  -758,  -359, -1517,  1493,  1422,   287,   202,
     -171,   622,  1577,   182,   962, -1202, -1474,  1468,
@@ -969,7 +1100,8 @@ fn ntt_i16_scalar(r: &mut [i16; 256]) {
     while len >= 2 {
         let mut start = 0usize;
         while start < 256 {
-            let zeta = ZETAS_I16[k]; k += 1;
+            let zeta = ZETAS_I16[k];
+            k += 1;
             for j in start..start + len {
                 let t = fqmul_s(zeta, r[j + len]);
                 r[j + len] = r[j].wrapping_sub(t);
@@ -983,7 +1115,9 @@ fn ntt_i16_scalar(r: &mut [i16; 256]) {
 
 // Barrett reduce all 256 coefficients.
 fn poly_reduce_i16(r: &mut [i16; 256]) {
-    for c in r.iter_mut() { *c = barrett_s(*c); }
+    for c in r.iter_mut() {
+        *c = barrett_s(*c);
+    }
 }
 
 // Inverse NTT in-place (Gentleman-Sande, f=1441 final scale).
@@ -1003,7 +1137,7 @@ fn intt_i16_scalar(r: &mut [i16; 256]) {
         let mut start = 0usize;
         while start < 256 {
             let zeta = ZETAS_I16[k];
-            if k > 0 { k -= 1; }
+            k = k.saturating_sub(1);
             for j in start..start + len {
                 let t = r[j];
                 r[j] = barrett_s(t.wrapping_add(r[j + len]));
@@ -1013,7 +1147,9 @@ fn intt_i16_scalar(r: &mut [i16; 256]) {
         }
         len <<= 1;
     }
-    for c in r.iter_mut() { *c = fqmul_s(*c, 1441); } // 128^{-1} * R mod q
+    for c in r.iter_mut() {
+        *c = fqmul_s(*c, 1441);
+    } // 128^{-1} * R mod q
 }
 
 // basemul: multiply two degree-1 polys in Z_q[x]/(x²-zeta), using fqmul.
@@ -1033,12 +1169,12 @@ fn basemul_acc_i16(acc: &mut [i16; 256], a: &[i16; 256], b: &[i16; 256]) {
     for i in 0..64 {
         let zeta = ZETAS_I16[64 + i];
         let mut tmp = [0i16; 2];
-        basemul_s(&mut tmp, &a[4*i..], &b[4*i..], zeta);
-        acc[4*i]     = acc[4*i].wrapping_add(tmp[0]);
-        acc[4*i + 1] = acc[4*i + 1].wrapping_add(tmp[1]);
-        basemul_s(&mut tmp, &a[4*i+2..], &b[4*i+2..], -zeta);
-        acc[4*i + 2] = acc[4*i + 2].wrapping_add(tmp[0]);
-        acc[4*i + 3] = acc[4*i + 3].wrapping_add(tmp[1]);
+        basemul_s(&mut tmp, &a[4 * i..], &b[4 * i..], zeta);
+        acc[4 * i] = acc[4 * i].wrapping_add(tmp[0]);
+        acc[4 * i + 1] = acc[4 * i + 1].wrapping_add(tmp[1]);
+        basemul_s(&mut tmp, &a[4 * i + 2..], &b[4 * i + 2..], -zeta);
+        acc[4 * i + 2] = acc[4 * i + 2].wrapping_add(tmp[0]);
+        acc[4 * i + 3] = acc[4 * i + 3].wrapping_add(tmp[1]);
     }
 }
 
@@ -1046,14 +1182,14 @@ fn basemul_acc_i16(acc: &mut [i16; 256], a: &[i16; 256], b: &[i16; 256]) {
 
 #[cfg(target_arch = "aarch64")]
 mod neon_poly {
-    use std::arch::aarch64::*;
     use super::ZETAS_I16;
+    use std::arch::aarch64::*;
 
     // Montgomery multiply: 8 lanes of int16, result in (-q,q).
     #[target_feature(enable = "neon")]
     pub unsafe fn fqmul_vec(a: int16x8_t, b: int16x8_t) -> int16x8_t {
         let qinv = vdup_n_s16(-3327_i16);
-        let q    = vdupq_n_s16(3329_i16);
+        let q = vdupq_n_s16(3329_i16);
         // lower 4 lanes
         let t_lo = vmull_s16(vget_low_s16(a), vget_low_s16(b));
         let u_lo = vmul_s16(vmovn_s32(t_lo), qinv);
@@ -1110,8 +1246,14 @@ mod neon_poly {
             let t = fqmul_vec(zv, bots);
             let nt = vaddq_s16(tops, t);
             let nb = vsubq_s16(tops, t);
-            vst1q_s16(r.as_mut_ptr().add(base), vcombine_s16(vget_low_s16(nt), vget_low_s16(nb)));
-            vst1q_s16(r.as_mut_ptr().add(base + 8), vcombine_s16(vget_high_s16(nt), vget_high_s16(nb)));
+            vst1q_s16(
+                r.as_mut_ptr().add(base),
+                vcombine_s16(vget_low_s16(nt), vget_low_s16(nb)),
+            );
+            vst1q_s16(
+                r.as_mut_ptr().add(base + 8),
+                vcombine_s16(vget_high_s16(nt), vget_high_s16(nb)),
+            );
         }
     }
 
@@ -1121,10 +1263,14 @@ mod neon_poly {
             let base = m * 16;
             let k = k0 + 4 * m;
             let zs: [i16; 8] = [
-                ZETAS_I16[k], ZETAS_I16[k],
-                ZETAS_I16[k + 1], ZETAS_I16[k + 1],
-                ZETAS_I16[k + 2], ZETAS_I16[k + 2],
-                ZETAS_I16[k + 3], ZETAS_I16[k + 3],
+                ZETAS_I16[k],
+                ZETAS_I16[k],
+                ZETAS_I16[k + 1],
+                ZETAS_I16[k + 1],
+                ZETAS_I16[k + 2],
+                ZETAS_I16[k + 2],
+                ZETAS_I16[k + 3],
+                ZETAS_I16[k + 3],
             ];
             let zv = vld1q_s16(zs.as_ptr());
             let v0 = vreinterpretq_s32_s16(vld1q_s16(r.as_ptr().add(base)));
@@ -1134,8 +1280,14 @@ mod neon_poly {
             let t = fqmul_vec(zv, bots);
             let nt = vreinterpretq_s32_s16(vaddq_s16(tops, t));
             let nb = vreinterpretq_s32_s16(vsubq_s16(tops, t));
-            vst1q_s16(r.as_mut_ptr().add(base), vreinterpretq_s16_s32(vzip1q_s32(nt, nb)));
-            vst1q_s16(r.as_mut_ptr().add(base + 8), vreinterpretq_s16_s32(vzip2q_s32(nt, nb)));
+            vst1q_s16(
+                r.as_mut_ptr().add(base),
+                vreinterpretq_s16_s32(vzip1q_s32(nt, nb)),
+            );
+            vst1q_s16(
+                r.as_mut_ptr().add(base + 8),
+                vreinterpretq_s16_s32(vzip2q_s32(nt, nb)),
+            );
         }
     }
 
@@ -1145,10 +1297,14 @@ mod neon_poly {
             let base = m * 16;
             let k = k0 - 4 * m;
             let zs: [i16; 8] = [
-                ZETAS_I16[k], ZETAS_I16[k],
-                ZETAS_I16[k - 1], ZETAS_I16[k - 1],
-                ZETAS_I16[k - 2], ZETAS_I16[k - 2],
-                ZETAS_I16[k - 3], ZETAS_I16[k - 3],
+                ZETAS_I16[k],
+                ZETAS_I16[k],
+                ZETAS_I16[k - 1],
+                ZETAS_I16[k - 1],
+                ZETAS_I16[k - 2],
+                ZETAS_I16[k - 2],
+                ZETAS_I16[k - 3],
+                ZETAS_I16[k - 3],
             ];
             let zv = vld1q_s16(zs.as_ptr());
             let v0 = vreinterpretq_s32_s16(vld1q_s16(r.as_ptr().add(base)));
@@ -1157,8 +1313,14 @@ mod neon_poly {
             let bots = vreinterpretq_s16_s32(vuzp2q_s32(v0, v1));
             let sum = vreinterpretq_s32_s16(barrett_vec(vaddq_s16(tops, bots)));
             let scaled = vreinterpretq_s32_s16(fqmul_vec(zv, vsubq_s16(bots, tops)));
-            vst1q_s16(r.as_mut_ptr().add(base), vreinterpretq_s16_s32(vzip1q_s32(sum, scaled)));
-            vst1q_s16(r.as_mut_ptr().add(base + 8), vreinterpretq_s16_s32(vzip2q_s32(sum, scaled)));
+            vst1q_s16(
+                r.as_mut_ptr().add(base),
+                vreinterpretq_s16_s32(vzip1q_s32(sum, scaled)),
+            );
+            vst1q_s16(
+                r.as_mut_ptr().add(base + 8),
+                vreinterpretq_s16_s32(vzip2q_s32(sum, scaled)),
+            );
         }
     }
 
@@ -1176,8 +1338,14 @@ mod neon_poly {
             let bots = vcombine_s16(vget_high_s16(v0), vget_high_s16(v1));
             let sum = barrett_vec(vaddq_s16(tops, bots));
             let scaled = fqmul_vec(zv, vsubq_s16(bots, tops));
-            vst1q_s16(r.as_mut_ptr().add(base), vcombine_s16(vget_low_s16(sum), vget_low_s16(scaled)));
-            vst1q_s16(r.as_mut_ptr().add(base + 8), vcombine_s16(vget_high_s16(sum), vget_high_s16(scaled)));
+            vst1q_s16(
+                r.as_mut_ptr().add(base),
+                vcombine_s16(vget_low_s16(sum), vget_low_s16(scaled)),
+            );
+            vst1q_s16(
+                r.as_mut_ptr().add(base + 8),
+                vcombine_s16(vget_high_s16(sum), vget_high_s16(scaled)),
+            );
         }
     }
 
@@ -1189,7 +1357,8 @@ mod neon_poly {
         while len >= 8 {
             let mut start = 0usize;
             while start < 256 {
-                let zeta_vec = vdupq_n_s16(ZETAS_I16[k]); k += 1;
+                let zeta_vec = vdupq_n_s16(ZETAS_I16[k]);
+                k += 1;
                 let mut j = start;
                 while j < start + len {
                     let top = vld1q_s16(r.as_ptr().add(j));
@@ -1220,12 +1389,12 @@ mod neon_poly {
             let mut start = 0usize;
             while start < 256 {
                 let zeta_vec = vdupq_n_s16(ZETAS_I16[k]);
-                if k > 0 { k -= 1; }
+                k = k.saturating_sub(1);
                 let mut j = start;
                 while j < start + len {
                     let top = vld1q_s16(r.as_ptr().add(j));
                     let bot = vld1q_s16(r.as_ptr().add(j + len));
-                    let sum   = barrett_vec(vaddq_s16(top, bot));
+                    let sum = barrett_vec(vaddq_s16(top, bot));
                     let scaled = fqmul_vec(zeta_vec, vsubq_s16(bot, top));
                     vst1q_s16(r.as_mut_ptr().add(j), sum);
                     vst1q_s16(r.as_mut_ptr().add(j + len), scaled);
@@ -1397,6 +1566,7 @@ fn ct_from_bytes(c: &[u8]) -> Ciphertext16 {
 mod keccak_x2 {
     use std::arch::aarch64::*;
 
+    #[rustfmt::skip]
     const RC: [u64; 24] = [
         0x0000000000000001, 0x0000000000008082, 0x800000000000808a, 0x8000000080008000,
         0x000000000000808b, 0x0000000080000001, 0x8000000080008081, 0x8000000000008009,
@@ -1414,72 +1584,72 @@ mod keccak_x2 {
     #[target_feature(enable = "sha3")]
     pub unsafe fn f1600_x2(s: &mut [uint64x2_t; 25]) {
         for round in 0..24 {
-        // theta: column parities
-        let c0 = veor3q_u64(veor3q_u64(s[0], s[5], s[10]), s[15], s[20]);
-        let c1 = veor3q_u64(veor3q_u64(s[1], s[6], s[11]), s[16], s[21]);
-        let c2 = veor3q_u64(veor3q_u64(s[2], s[7], s[12]), s[17], s[22]);
-        let c3 = veor3q_u64(veor3q_u64(s[3], s[8], s[13]), s[18], s[23]);
-        let c4 = veor3q_u64(veor3q_u64(s[4], s[9], s[14]), s[19], s[24]);
-        // d[x] = c[x-1] ^ rol(c[x+1], 1)   (RAX1)
-        let d0 = vrax1q_u64(c4, c1);
-        let d1 = vrax1q_u64(c0, c2);
-        let d2 = vrax1q_u64(c1, c3);
-        let d3 = vrax1q_u64(c2, c4);
-        let d4 = vrax1q_u64(c3, c0);
-        // theta-add + rho + pi fused: b[i] = rol(s[src] ^ d[src%5], ROT[src])   (XAR)
-        let b0 = vxarq_u64::<0>(s[0], d0);
-        let b1 = vxarq_u64::<20>(s[6], d1);
-        let b2 = vxarq_u64::<21>(s[12], d2);
-        let b3 = vxarq_u64::<43>(s[18], d3);
-        let b4 = vxarq_u64::<50>(s[24], d4);
-        let b5 = vxarq_u64::<36>(s[3], d3);
-        let b6 = vxarq_u64::<44>(s[9], d4);
-        let b7 = vxarq_u64::<61>(s[10], d0);
-        let b8 = vxarq_u64::<19>(s[16], d1);
-        let b9 = vxarq_u64::<3>(s[22], d2);
-        let b10 = vxarq_u64::<63>(s[1], d1);
-        let b11 = vxarq_u64::<58>(s[7], d2);
-        let b12 = vxarq_u64::<39>(s[13], d3);
-        let b13 = vxarq_u64::<56>(s[19], d4);
-        let b14 = vxarq_u64::<46>(s[20], d0);
-        let b15 = vxarq_u64::<37>(s[4], d4);
-        let b16 = vxarq_u64::<28>(s[5], d0);
-        let b17 = vxarq_u64::<54>(s[11], d1);
-        let b18 = vxarq_u64::<49>(s[17], d2);
-        let b19 = vxarq_u64::<8>(s[23], d3);
-        let b20 = vxarq_u64::<2>(s[2], d2);
-        let b21 = vxarq_u64::<9>(s[8], d3);
-        let b22 = vxarq_u64::<25>(s[14], d4);
-        let b23 = vxarq_u64::<23>(s[15], d0);
-        let b24 = vxarq_u64::<62>(s[21], d1);
-        // chi: a[i] = b[i] ^ (~b[i+1] & b[i+2])   (BCAX)
-        s[0] = vbcaxq_u64(b0, b2, b1);
-        s[1] = vbcaxq_u64(b1, b3, b2);
-        s[2] = vbcaxq_u64(b2, b4, b3);
-        s[3] = vbcaxq_u64(b3, b0, b4);
-        s[4] = vbcaxq_u64(b4, b1, b0);
-        s[5] = vbcaxq_u64(b5, b7, b6);
-        s[6] = vbcaxq_u64(b6, b8, b7);
-        s[7] = vbcaxq_u64(b7, b9, b8);
-        s[8] = vbcaxq_u64(b8, b5, b9);
-        s[9] = vbcaxq_u64(b9, b6, b5);
-        s[10] = vbcaxq_u64(b10, b12, b11);
-        s[11] = vbcaxq_u64(b11, b13, b12);
-        s[12] = vbcaxq_u64(b12, b14, b13);
-        s[13] = vbcaxq_u64(b13, b10, b14);
-        s[14] = vbcaxq_u64(b14, b11, b10);
-        s[15] = vbcaxq_u64(b15, b17, b16);
-        s[16] = vbcaxq_u64(b16, b18, b17);
-        s[17] = vbcaxq_u64(b17, b19, b18);
-        s[18] = vbcaxq_u64(b18, b15, b19);
-        s[19] = vbcaxq_u64(b19, b16, b15);
-        s[20] = vbcaxq_u64(b20, b22, b21);
-        s[21] = vbcaxq_u64(b21, b23, b22);
-        s[22] = vbcaxq_u64(b22, b24, b23);
-        s[23] = vbcaxq_u64(b23, b20, b24);
-        s[24] = vbcaxq_u64(b24, b21, b20);
-        // iota
-        s[0] = veorq_u64(s[0], vdupq_n_u64(RC[round]));
+            // theta: column parities
+            let c0 = veor3q_u64(veor3q_u64(s[0], s[5], s[10]), s[15], s[20]);
+            let c1 = veor3q_u64(veor3q_u64(s[1], s[6], s[11]), s[16], s[21]);
+            let c2 = veor3q_u64(veor3q_u64(s[2], s[7], s[12]), s[17], s[22]);
+            let c3 = veor3q_u64(veor3q_u64(s[3], s[8], s[13]), s[18], s[23]);
+            let c4 = veor3q_u64(veor3q_u64(s[4], s[9], s[14]), s[19], s[24]);
+            // d[x] = c[x-1] ^ rol(c[x+1], 1)   (RAX1)
+            let d0 = vrax1q_u64(c4, c1);
+            let d1 = vrax1q_u64(c0, c2);
+            let d2 = vrax1q_u64(c1, c3);
+            let d3 = vrax1q_u64(c2, c4);
+            let d4 = vrax1q_u64(c3, c0);
+            // theta-add + rho + pi fused: b[i] = rol(s[src] ^ d[src%5], ROT[src])   (XAR)
+            let b0 = vxarq_u64::<0>(s[0], d0);
+            let b1 = vxarq_u64::<20>(s[6], d1);
+            let b2 = vxarq_u64::<21>(s[12], d2);
+            let b3 = vxarq_u64::<43>(s[18], d3);
+            let b4 = vxarq_u64::<50>(s[24], d4);
+            let b5 = vxarq_u64::<36>(s[3], d3);
+            let b6 = vxarq_u64::<44>(s[9], d4);
+            let b7 = vxarq_u64::<61>(s[10], d0);
+            let b8 = vxarq_u64::<19>(s[16], d1);
+            let b9 = vxarq_u64::<3>(s[22], d2);
+            let b10 = vxarq_u64::<63>(s[1], d1);
+            let b11 = vxarq_u64::<58>(s[7], d2);
+            let b12 = vxarq_u64::<39>(s[13], d3);
+            let b13 = vxarq_u64::<56>(s[19], d4);
+            let b14 = vxarq_u64::<46>(s[20], d0);
+            let b15 = vxarq_u64::<37>(s[4], d4);
+            let b16 = vxarq_u64::<28>(s[5], d0);
+            let b17 = vxarq_u64::<54>(s[11], d1);
+            let b18 = vxarq_u64::<49>(s[17], d2);
+            let b19 = vxarq_u64::<8>(s[23], d3);
+            let b20 = vxarq_u64::<2>(s[2], d2);
+            let b21 = vxarq_u64::<9>(s[8], d3);
+            let b22 = vxarq_u64::<25>(s[14], d4);
+            let b23 = vxarq_u64::<23>(s[15], d0);
+            let b24 = vxarq_u64::<62>(s[21], d1);
+            // chi: a[i] = b[i] ^ (~b[i+1] & b[i+2])   (BCAX)
+            s[0] = vbcaxq_u64(b0, b2, b1);
+            s[1] = vbcaxq_u64(b1, b3, b2);
+            s[2] = vbcaxq_u64(b2, b4, b3);
+            s[3] = vbcaxq_u64(b3, b0, b4);
+            s[4] = vbcaxq_u64(b4, b1, b0);
+            s[5] = vbcaxq_u64(b5, b7, b6);
+            s[6] = vbcaxq_u64(b6, b8, b7);
+            s[7] = vbcaxq_u64(b7, b9, b8);
+            s[8] = vbcaxq_u64(b8, b5, b9);
+            s[9] = vbcaxq_u64(b9, b6, b5);
+            s[10] = vbcaxq_u64(b10, b12, b11);
+            s[11] = vbcaxq_u64(b11, b13, b12);
+            s[12] = vbcaxq_u64(b12, b14, b13);
+            s[13] = vbcaxq_u64(b13, b10, b14);
+            s[14] = vbcaxq_u64(b14, b11, b10);
+            s[15] = vbcaxq_u64(b15, b17, b16);
+            s[16] = vbcaxq_u64(b16, b18, b17);
+            s[17] = vbcaxq_u64(b17, b19, b18);
+            s[18] = vbcaxq_u64(b18, b15, b19);
+            s[19] = vbcaxq_u64(b19, b16, b15);
+            s[20] = vbcaxq_u64(b20, b22, b21);
+            s[21] = vbcaxq_u64(b21, b23, b22);
+            s[22] = vbcaxq_u64(b22, b24, b23);
+            s[23] = vbcaxq_u64(b23, b20, b24);
+            s[24] = vbcaxq_u64(b24, b21, b20);
+            // iota
+            s[0] = veorq_u64(s[0], vdupq_n_u64(RC[round]));
         }
     }
 
@@ -1523,7 +1693,11 @@ mod keccak_x2 {
             }
             f1600_x2(&mut s);
 
-            Self { s, rate, permute_pending: false }
+            Self {
+                s,
+                rate,
+                permute_pending: false,
+            }
         }
 
         /// Emit the next `rate` bytes for each lane.
@@ -1649,28 +1823,29 @@ fn gen_poly_uniform_pair_i16(rho: &[u8; 32], a: (u8, u8), b: (u8, u8)) -> (Poly1
 
 fn gen_matrix_i16(rho: &[u8; 32]) -> [[Poly16; KYBER_K]; KYBER_K] {
     #[cfg(target_arch = "aarch64")]
-    {
+    let a = {
         // KYBER_K = 2, so the four entries pair up row by row.
         let (a00, a01) = gen_poly_uniform_pair_i16(rho, (0, 0), (0, 1));
         let (a10, a11) = gen_poly_uniform_pair_i16(rho, (1, 0), (1, 1));
-        return [[a00, a01], [a10, a11]];
-    }
+        [[a00, a01], [a10, a11]]
+    };
     #[cfg(not(target_arch = "aarch64"))]
-    {
-        std::array::from_fn(|i| std::array::from_fn(|j| gen_poly_uniform_i16(rho, i as u8, j as u8)))
-    }
+    let a = std::array::from_fn(|i| {
+        std::array::from_fn(|j| gen_poly_uniform_i16(rho, i as u8, j as u8))
+    });
+    a
 }
 
 // CBD(η=2): returns centered coefficients as i16.
 fn cbd_eta2_i16(buf: &[u8; 128]) -> Poly16 {
     let mut r = [0i16; 256];
     for i in 0..32 {
-        let t = u32::from_le_bytes([buf[4*i], buf[4*i+1], buf[4*i+2], buf[4*i+3]]);
+        let t = u32::from_le_bytes([buf[4 * i], buf[4 * i + 1], buf[4 * i + 2], buf[4 * i + 3]]);
         let d = (t & 0x55555555).wrapping_add((t >> 1) & 0x55555555);
         for j in 0..8 {
-            let a = ((d >> (4*j))     & 0x3) as i16;
-            let b = ((d >> (4*j + 2)) & 0x3) as i16;
-            r[8*i + j] = a - b;
+            let a = ((d >> (4 * j)) & 0x3) as i16;
+            let b = ((d >> (4 * j + 2)) & 0x3) as i16;
+            r[8 * i + j] = a - b;
         }
     }
     r
@@ -1681,7 +1856,8 @@ fn cbd_eta2_i16(buf: &[u8; 128]) -> Poly16 {
 fn cbd_eta3_i16(buf: &[u8; 192]) -> Poly16 {
     let mut r = [0i16; 256];
     for i in 0..64 {
-        let t = (buf[3 * i] as u32) | ((buf[3 * i + 1] as u32) << 8) | ((buf[3 * i + 2] as u32) << 16);
+        let t =
+            (buf[3 * i] as u32) | ((buf[3 * i + 1] as u32) << 8) | ((buf[3 * i + 2] as u32) << 16);
         let mut d = t & 0x0024_9249;
         d += (t >> 1) & 0x0024_9249;
         d += (t >> 2) & 0x0024_9249;
@@ -1782,22 +1958,31 @@ fn prf_cbd3_pair_i16(sigma: &[u8; 32], n0: u8, n1: u8) -> (Poly16, Poly16) {
 fn matvec_i16(a: &[[Poly16; KYBER_K]; KYBER_K], v: &[Poly16; KYBER_K]) -> [Poly16; KYBER_K] {
     std::array::from_fn(|i| {
         let mut acc = [0i16; 256];
-        for j in 0..KYBER_K { basemul_acc_i16(&mut acc, &a[i][j], &v[j]); }
+        for j in 0..KYBER_K {
+            basemul_acc_i16(&mut acc, &a[i][j], &v[j]);
+        }
         acc
     })
 }
 
-fn matvec_transpose_i16(a: &[[Poly16; KYBER_K]; KYBER_K], v: &[Poly16; KYBER_K]) -> [Poly16; KYBER_K] {
+fn matvec_transpose_i16(
+    a: &[[Poly16; KYBER_K]; KYBER_K],
+    v: &[Poly16; KYBER_K],
+) -> [Poly16; KYBER_K] {
     std::array::from_fn(|i| {
         let mut acc = [0i16; 256];
-        for j in 0..KYBER_K { basemul_acc_i16(&mut acc, &a[j][i], &v[j]); }
+        for j in 0..KYBER_K {
+            basemul_acc_i16(&mut acc, &a[j][i], &v[j]);
+        }
         acc
     })
 }
 
 fn inner_product_i16(a: &[Poly16; KYBER_K], b: &[Poly16; KYBER_K]) -> Poly16 {
     let mut acc = [0i16; 256];
-    for j in 0..KYBER_K { basemul_acc_i16(&mut acc, &a[j], &b[j]); }
+    for j in 0..KYBER_K {
+        basemul_acc_i16(&mut acc, &a[j], &b[j]);
+    }
     acc
 }
 
@@ -1814,11 +1999,13 @@ fn poly_sub_i16(a: &Poly16, b: &Poly16) -> Poly16 {
 // Reference C poly_tobytes: normalize negative with (t >> 15) & q trick.
 fn poly_to_bytes_i16(p: &Poly16, out: &mut [u8; 384]) {
     for i in 0..128 {
-        let mut t0 = p[2*i] as i32;     t0 += (t0 >> 15) & 3329; // make non-negative
-        let mut t1 = p[2*i+1] as i32;   t1 += (t1 >> 15) & 3329;
-        out[3*i]     = t0 as u8;
-        out[3*i + 1] = ((t0 >> 8) | (t1 << 4)) as u8;
-        out[3*i + 2] = (t1 >> 4) as u8;
+        let mut t0 = p[2 * i] as i32;
+        t0 += (t0 >> 15) & 3329; // make non-negative
+        let mut t1 = p[2 * i + 1] as i32;
+        t1 += (t1 >> 15) & 3329;
+        out[3 * i] = t0 as u8;
+        out[3 * i + 1] = ((t0 >> 8) | (t1 << 4)) as u8;
+        out[3 * i + 2] = (t1 >> 4) as u8;
     }
 }
 
@@ -1837,7 +2024,7 @@ fn compress_coeff(c: i16, d: u32) -> u16 {
     let q = KYBER_Q as i32;
     let mut t = c as i32;
     t += (t >> 31) & q; // canonicalise: if t < 0, t += q
-    // No `/ q` on secret data (KyberSlash); see src/kem.rs::compress_coeff.
+                        // No `/ q` on secret data (KyberSlash); see src/kem.rs::compress_coeff.
     let t = t as u64;
     match d {
         10 => (((((t << 10) + 1665) * 1_290_167) >> 32) & 0x3ff) as u16,
@@ -1934,7 +2121,7 @@ fn msg_encode_i16(msg: &[u8; 32]) -> Poly16 {
     for i in 0..32 {
         for j in 0..8 {
             let bit = ((msg[i] >> j) & 1) as i16;
-            r[8*i + j] = bit * ((KYBER_Q as i16 + 1) / 2);
+            r[8 * i + j] = bit * ((KYBER_Q as i16 + 1) / 2);
         }
     }
     r
@@ -1945,11 +2132,11 @@ fn msg_decode_i16(p: &Poly16) -> [u8; 32] {
     for i in 0..32 {
         for j in 0..8 {
             // Input lies in (-q, 2q); two masked steps bring it to [0, q).
-            let mut t = p[8*i + j] as i32;
+            let mut t = p[8 * i + j] as i32;
             t += (t >> 31) & 3329;
             t -= 3329;
             t += (t >> 31) & 3329;
-            let bit = (((((t as u32) << 1) + 1665) * 80_635 >> 28) & 1) as u8; // no division
+            let bit = ((((((t as u32) << 1) + 1665) * 80_635) >> 28) & 1) as u8; // no division
             msg[i] |= bit << j;
         }
     }
@@ -1963,15 +2150,21 @@ fn kyber_keygen_neon(d: &[u8; 32], z: &[u8; 32]) -> SecretKey16 {
     // byte k is the domain separation added in final FIPS 203; round-3 Kyber
     // omitted it. Omitting it produces a non-conformant key.
     let g = sha3_512(&[d.as_slice(), &[KYBER_K as u8]]);
-    let mut rho = [0u8; 32]; let mut sigma = [0u8; 32];
-    rho.copy_from_slice(&g[..32]); sigma.copy_from_slice(&g[32..]);
+    let mut rho = [0u8; 32];
+    let mut sigma = [0u8; 32];
+    rho.copy_from_slice(&g[..32]);
+    sigma.copy_from_slice(&g[32..]);
 
     let a_hat = gen_matrix_i16(&rho);
 
     // Nonces 0,1 for s and 2,3 for e — sampled two lanes at a time.
     let (s0, s1) = prf_cbd3_pair_i16(&sigma, 0, 1);
     let (e0, e1) = prf_cbd3_pair_i16(&sigma, 2, 3);
-    let to_ntt = |mut p: Poly16| { ntt_i16(&mut p); poly_reduce_i16(&mut p); p };
+    let to_ntt = |mut p: Poly16| {
+        ntt_i16(&mut p);
+        poly_reduce_i16(&mut p);
+        p
+    };
     let s_hat: [Poly16; KYBER_K] = [to_ntt(s0), to_ntt(s1)];
     let e_hat: [Poly16; KYBER_K] = [to_ntt(e0), to_ntt(e1)];
 
@@ -1979,7 +2172,9 @@ fn kyber_keygen_neon(d: &[u8; 32], z: &[u8; 32]) -> SecretKey16 {
     for i in 0..KYBER_K {
         // poly_tomont: multiply each coeff by R mod q = fqmul(c, R²modq=1353)
         // Matches reference C poly_tomont(pkpv.vec[i]) after basemul_acc_montgomery.
-        for c in t_hat[i].iter_mut() { *c = fqmul_s(*c, 1353); }
+        for c in t_hat[i].iter_mut() {
+            *c = fqmul_s(*c, 1353);
+        }
         t_hat[i] = poly_add_i16(&t_hat[i], &e_hat[i]);
         poly_reduce_i16(&mut t_hat[i]);
     }
@@ -2006,14 +2201,20 @@ fn kyber_encaps_neon(pk: &PublicKey16, m: &[u8; 32]) -> (Ciphertext16, [u8; 32])
     // FIPS 203 Alg. 17 (ML-KEM.Encaps_internal): (K, r) = G(m ‖ H(ek)).
     // Round-3 Kyber hashed m first; FIPS 203 uses it directly.
     let g = sha3_512(&[m.as_slice(), pk.h_pk.as_slice()]);
-    let mut k_bar = [0u8; 32]; let mut r_seed = [0u8; 32];
-    k_bar.copy_from_slice(&g[..32]); r_seed.copy_from_slice(&g[32..]);
+    let mut k_bar = [0u8; 32];
+    let mut r_seed = [0u8; 32];
+    k_bar.copy_from_slice(&g[..32]);
+    r_seed.copy_from_slice(&g[32..]);
 
     let a_hat = gen_matrix_i16(&pk.rho);
     // Nonces 0,1 for r; 2,3 for e1; 4 for e2 — paired where possible.
-    let (r0, r1) = prf_cbd3_pair_i16(&r_seed, 0, 1);   // eta1 = 3
-    let (e1a, e1b) = prf_cbd_pair_i16(&r_seed, 2, 3);  // eta2 = 2
-    let to_ntt = |mut p: Poly16| { ntt_i16(&mut p); poly_reduce_i16(&mut p); p };
+    let (r0, r1) = prf_cbd3_pair_i16(&r_seed, 0, 1); // eta1 = 3
+    let (e1a, e1b) = prf_cbd_pair_i16(&r_seed, 2, 3); // eta2 = 2
+    let to_ntt = |mut p: Poly16| {
+        ntt_i16(&mut p);
+        poly_reduce_i16(&mut p);
+        p
+    };
     let r_hat: [Poly16; KYBER_K] = [to_ntt(r0), to_ntt(r1)];
     let e1_poly: [Poly16; KYBER_K] = [e1a, e1b];
     let e2 = prf_cbd_i16(&r_seed, 4);
@@ -2040,13 +2241,16 @@ fn kyber_encaps_neon(pk: &PublicKey16, m: &[u8; 32]) -> (Ciphertext16, [u8; 32])
 
     let u_enc: [[u8; 320]; KYBER_K] = std::array::from_fn(|i| {
         let mut buf = [0u8; 320];
-        poly_compress_i16(&u_poly[i], 10, &mut buf); buf
+        poly_compress_i16(&u_poly[i], 10, &mut buf);
+        buf
     });
     let mut v_enc = [0u8; 128];
     poly_compress_i16(&v_poly, 4, &mut v_enc);
 
     let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
-    for ue in &u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
+    for ue in &u_enc {
+        ct_bytes.extend_from_slice(ue.as_slice());
+    }
     ct_bytes.extend_from_slice(&v_enc);
     // FIPS 203: the shared secret is K as produced by G. Round-3 Kyber applied
     // a final KDF(K ‖ H(c)); FIPS 203 removed it.
@@ -2058,7 +2262,9 @@ fn kyber_encaps_neon(pk: &PublicKey16, m: &[u8; 32]) -> (Ciphertext16, [u8; 32])
 fn kyber_decaps_neon(sk: &SecretKey16, ct: &Ciphertext16) -> [u8; 32] {
     let u_hat: [Poly16; KYBER_K] = std::array::from_fn(|i| {
         let mut p = poly_decompress_i16(&ct.u_enc[i], 10);
-        ntt_i16(&mut p); poly_reduce_i16(&mut p); p
+        ntt_i16(&mut p);
+        poly_reduce_i16(&mut p);
+        p
     });
     let v_poly = poly_decompress_i16(&ct.v_enc, 4);
 
@@ -2086,7 +2292,9 @@ fn kyber_decaps_neon(sk: &SecretKey16, ct: &Ciphertext16) -> [u8; 32] {
     let reject = ((diff as u16).wrapping_neg() >> 8) as u8;
 
     let mut ct_bytes: Vec<u8> = Vec::with_capacity(KYBER_K * 320 + 128);
-    for ue in &ct.u_enc { ct_bytes.extend_from_slice(ue.as_slice()); }
+    for ue in &ct.u_enc {
+        ct_bytes.extend_from_slice(ue.as_slice());
+    }
     ct_bytes.extend_from_slice(&ct.v_enc);
     // FIPS 203 Alg. 18 (ML-KEM.Decaps_internal): the implicit-rejection key is
     // J(z ‖ c) = SHAKE256(z ‖ c, 32) over the whole ciphertext — not a SHA3-256
@@ -2095,7 +2303,9 @@ fn kyber_decaps_neon(sk: &SecretKey16, ct: &Ciphertext16) -> [u8; 32] {
     shake256(&[sk.z.as_slice(), &ct_bytes], &mut ss_reject);
 
     let mut ss = [0u8; 32];
-    for i in 0..32 { ss[i] = (ss_prime[i] & !reject) | (ss_reject[i] & reject); }
+    for i in 0..32 {
+        ss[i] = (ss_prime[i] & !reject) | (ss_reject[i] & reject);
+    }
     ss
 }
 
@@ -2103,7 +2313,9 @@ fn kyber_decaps_neon(sk: &SecretKey16, ct: &Ciphertext16) -> [u8; 32] {
 
 fn measure_ns<F: FnMut()>(iters: usize, mut f: F) -> f64 {
     let start = Instant::now();
-    for _ in 0..iters { f(); }
+    for _ in 0..iters {
+        f();
+    }
     start.elapsed().as_nanos() as f64 / iters as f64
 }
 
@@ -2144,8 +2356,10 @@ trait MlKem512Backend {
 struct BackendNeon;
 impl MlKem512Backend for BackendNeon {
     const NAME: &'static str = "NEON i16 NTT + inline Keccak";
-    fn keygen(d: &[u8; 32], z: &[u8; 32])
-        -> ([u8; ML_KEM_512_EK_BYTES], [u8; ML_KEM_512_DK_BYTES]) {
+    fn keygen(
+        d: &[u8; 32],
+        z: &[u8; 32],
+    ) -> ([u8; ML_KEM_512_EK_BYTES], [u8; ML_KEM_512_DK_BYTES]) {
         let sk = kyber_keygen_neon(d, z);
         (ek_to_bytes(&sk.pk), dk_to_bytes(&sk))
     }
@@ -2165,8 +2379,10 @@ static I64_CONSTS: NTTConstants = NTTConstants::new();
 struct BackendI64Inline;
 impl MlKem512Backend for BackendI64Inline {
     const NAME: &'static str = "i64 NTT + inline Keccak";
-    fn keygen(d: &[u8; 32], z: &[u8; 32])
-        -> ([u8; ML_KEM_512_EK_BYTES], [u8; ML_KEM_512_DK_BYTES]) {
+    fn keygen(
+        d: &[u8; 32],
+        z: &[u8; 32],
+    ) -> ([u8; ML_KEM_512_EK_BYTES], [u8; ML_KEM_512_DK_BYTES]) {
         let sk = kyber_keygen(d, z, &I64_CONSTS);
         (ek_to_bytes_i64(&sk.pk), dk_to_bytes_i64(&sk))
     }
@@ -2183,8 +2399,10 @@ impl MlKem512Backend for BackendI64Inline {
 struct BackendI64Sha3Hw;
 impl MlKem512Backend for BackendI64Sha3Hw {
     const NAME: &'static str = "i64 NTT + sha3 crate (asm)";
-    fn keygen(d: &[u8; 32], z: &[u8; 32])
-        -> ([u8; ML_KEM_512_EK_BYTES], [u8; ML_KEM_512_DK_BYTES]) {
+    fn keygen(
+        d: &[u8; 32],
+        z: &[u8; 32],
+    ) -> ([u8; ML_KEM_512_EK_BYTES], [u8; ML_KEM_512_DK_BYTES]) {
         let sk = kyber_keygen_hw(d, z, &I64_CONSTS);
         (ek_to_bytes_i64(&sk.pk), dk_to_bytes_i64(&sk))
     }
@@ -2304,12 +2522,15 @@ fn main() {
     // z (the implicit-rejection secret). z must be secret and unpredictable; a
     // fixed or zero z lets anyone compute the rejection key.
     let zseed = [1u8; 32];
-    let m    = [1u8; 32];
+    let m = [1u8; 32];
 
     // ── Debug: NTT round-trip check ──────────────────────────────────────────
     {
         let mut p = [0i16; 256];
-        p[0] = 1; p[1] = 2; p[5] = 100; p[100] = 999;
+        p[0] = 1;
+        p[1] = 2;
+        p[5] = 100;
+        p[100] = 999;
         let orig = p;
 
         // invntt_tomont(ntt(p)) = p * R mod q where R = 2^16 mod q = 2285.
@@ -2319,9 +2540,13 @@ fn main() {
         fn normalize_q(x: i16) -> i16 {
             let mut t = x as i32;
             t += (t >> 15) & 3329;
-            if t >= 3329 { t -= 3329; }
+            if t >= 3329 {
+                t -= 3329;
+            }
             // center
-            if t > 1664 { t -= 3329; }
+            if t > 1664 {
+                t -= 3329;
+            }
             t as i16
         }
         // R mod q = 2285 (centered: -1044)
@@ -2331,40 +2556,64 @@ fn main() {
             let r = 2285i32;
             let t = (x as i32) * r;
             let mut v = ((t % 3329) + 3329) % 3329;
-            if v > 1664 { v -= 3329; }
+            if v > 1664 {
+                v -= 3329;
+            }
             v as i16
         }
 
         // Scalar round-trip
         let mut ps = orig;
-        ntt_i16_scalar(&mut ps); poly_reduce_i16(&mut ps);
-        intt_i16_scalar(&mut ps); poly_reduce_i16(&mut ps);
+        ntt_i16_scalar(&mut ps);
+        poly_reduce_i16(&mut ps);
+        intt_i16_scalar(&mut ps);
+        poly_reduce_i16(&mut ps);
         let mut ok_scalar = true;
         for i in 0..256 {
             let exp = scale_by_r(orig[i]);
             let got = normalize_q(ps[i]);
             if got != exp {
-                println!("  Scalar NTT round-trip mismatch at [{}]: orig={} exp={} got={}", i, orig[i], exp, got);
+                println!(
+                    "  Scalar NTT round-trip mismatch at [{}]: orig={} exp={} got={}",
+                    i, orig[i], exp, got
+                );
                 ok_scalar = false;
-                if i > 5 { break; }
+                if i > 5 {
+                    break;
+                }
             }
         }
-        if ok_scalar { println!("  Scalar NTT round-trip: PASSED (result = orig*R mod q)"); } else { println!("  Scalar NTT round-trip: FAILED"); }
+        if ok_scalar {
+            println!("  Scalar NTT round-trip: PASSED (result = orig*R mod q)");
+        } else {
+            println!("  Scalar NTT round-trip: FAILED");
+        }
 
         // NEON round-trip (only meaningful on aarch64)
-        ntt_i16(&mut p); poly_reduce_i16(&mut p);
-        intt_i16(&mut p); poly_reduce_i16(&mut p);
+        ntt_i16(&mut p);
+        poly_reduce_i16(&mut p);
+        intt_i16(&mut p);
+        poly_reduce_i16(&mut p);
         let mut ok = true;
         for i in 0..256 {
             let exp = scale_by_r(orig[i]);
             let got = normalize_q(p[i]);
             if got != exp {
-                println!("  NEON NTT round-trip mismatch at [{}]: orig={} exp={} got={}", i, orig[i], exp, got);
+                println!(
+                    "  NEON NTT round-trip mismatch at [{}]: orig={} exp={} got={}",
+                    i, orig[i], exp, got
+                );
                 ok = false;
-                if i > 5 { break; }
+                if i > 5 {
+                    break;
+                }
             }
         }
-        if ok { println!("  NEON NTT round-trip: PASSED (result = orig*R mod q)"); } else { println!("  NEON NTT round-trip: FAILED"); }
+        if ok {
+            println!("  NEON NTT round-trip: PASSED (result = orig*R mod q)");
+        } else {
+            println!("  NEON NTT round-trip: FAILED");
+        }
 
         // Test fqmul_vec for a single value
         #[cfg(target_arch = "aarch64")]
@@ -2383,11 +2632,18 @@ fn main() {
             for i in 0..8 {
                 let exp = fqmul_s(a_arr[i], b_arr[i]);
                 if res_arr[i] != exp {
-                    println!("  fqmul_vec[{}]: fqmul_s({},{})={} but vec gave {}", i, a_arr[i], b_arr[i], exp, res_arr[i]);
+                    println!(
+                        "  fqmul_vec[{}]: fqmul_s({},{})={} but vec gave {}",
+                        i, a_arr[i], b_arr[i], exp, res_arr[i]
+                    );
                     fqmul_ok = false;
                 }
             }
-            if fqmul_ok { println!("  fqmul_vec: PASSED"); } else { println!("  fqmul_vec: FAILED"); }
+            if fqmul_ok {
+                println!("  fqmul_vec: PASSED");
+            } else {
+                println!("  fqmul_vec: FAILED");
+            }
         }
     }
     println!();
@@ -2415,11 +2671,20 @@ fn main() {
         // Fast codecs must agree with the bit-at-a-time reference, bit for bit.
         {
             let mut st = 0x243F6A8885A308D3u64;
-            let mut next = || { st ^= st << 13; st ^= st >> 7; st ^= st << 17; st };
+            let mut next = || {
+                st ^= st << 13;
+                st ^= st >> 7;
+                st ^= st << 17;
+                st
+            };
             for trial in 0..2000 {
                 let p: Poly16 = std::array::from_fn(|_| {
                     let v = (next() % 3329) as i16;
-                    if trial % 2 == 0 { v } else { v - 1664 }  // canonical and centred inputs
+                    if trial % 2 == 0 {
+                        v
+                    } else {
+                        v - 1664
+                    } // canonical and centred inputs
                 });
                 for &(d, len) in &[(10usize, 320usize), (4, 128), (11, 352), (5, 160)] {
                     let (d, len) = (d as u32, len);
@@ -2443,8 +2708,14 @@ fn main() {
                     let df = poly_decompress(&fast, d);
                     let dr = poly_decompress_generic(&refr, d);
                     for i in 0..KYBER_N {
-                        assert_eq!(df.coeffs[i].value(), dr.coeffs[i].value(),
-                                   "decompress i64 d={} trial={} coeff={}", d, trial, i);
+                        assert_eq!(
+                            df.coeffs[i].value(),
+                            dr.coeffs[i].value(),
+                            "decompress i64 d={} trial={} coeff={}",
+                            d,
+                            trial,
+                            i
+                        );
                     }
                 }
             }
@@ -2467,8 +2738,14 @@ fn main() {
                     let d1 = (buf[pos] as u16) | (((buf[pos + 1] as u16) & 0x0F) << 8);
                     let d2 = (buf[pos + 1] as u16 >> 4) | ((buf[pos + 2] as u16) << 4);
                     pos += 3;
-                    if (d1 as i64) < KYBER_Q { r[count] = d1 as i16; count += 1; }
-                    if (d2 as i64) < KYBER_Q && count < 256 { r[count] = d2 as i16; count += 1; }
+                    if (d1 as i64) < KYBER_Q {
+                        r[count] = d1 as i16;
+                        count += 1;
+                    }
+                    if (d2 as i64) < KYBER_Q && count < 256 {
+                        r[count] = d2 as i16;
+                        count += 1;
+                    }
                 }
                 r
             }
@@ -2479,28 +2756,50 @@ fn main() {
             }
 
             let mut st = 0xB5026F5AA96619E9u64;
-            let mut next = || { st ^= st << 13; st ^= st >> 7; st ^= st << 17; st };
+            let mut next = || {
+                st ^= st << 13;
+                st ^= st >> 7;
+                st ^= st << 17;
+                st
+            };
             for _ in 0..200 {
                 let rho: [u8; 32] = std::array::from_fn(|_| next() as u8);
 
                 // streaming sampler == fixed-buffer reference
-                for i in 0..2u8 { for j in 0..2u8 {
-                    assert_eq!(gen_poly_uniform_i16(&rho, i, j),
-                               gen_poly_uniform_reference(&rho, i, j),
-                               "streaming uniform sampler diverged at ({i},{j})");
-                }}
+                for i in 0..2u8 {
+                    for j in 0..2u8 {
+                        assert_eq!(
+                            gen_poly_uniform_i16(&rho, i, j),
+                            gen_poly_uniform_reference(&rho, i, j),
+                            "streaming uniform sampler diverged at ({i},{j})"
+                        );
+                    }
+                }
 
                 // two-lane sampler == two serial calls (catches lane swaps)
                 let (p0, p1) = gen_poly_uniform_pair_i16(&rho, (0, 1), (1, 0));
-                assert_eq!(p0, gen_poly_uniform_reference(&rho, 0, 1), "x2 matrix lane 0");
-                assert_eq!(p1, gen_poly_uniform_reference(&rho, 1, 0), "x2 matrix lane 1");
+                assert_eq!(
+                    p0,
+                    gen_poly_uniform_reference(&rho, 0, 1),
+                    "x2 matrix lane 0"
+                );
+                assert_eq!(
+                    p1,
+                    gen_poly_uniform_reference(&rho, 1, 0),
+                    "x2 matrix lane 1"
+                );
 
                 // full matrix in the right order
                 let m = gen_matrix_i16(&rho);
-                for i in 0..2 { for j in 0..2 {
-                    assert_eq!(m[i][j], gen_poly_uniform_reference(&rho, i as u8, j as u8),
-                               "gen_matrix_i16 entry ({i},{j})");
-                }}
+                for i in 0..2 {
+                    for j in 0..2 {
+                        assert_eq!(
+                            m[i][j],
+                            gen_poly_uniform_reference(&rho, i as u8, j as u8),
+                            "gen_matrix_i16 entry ({i},{j})"
+                        );
+                    }
+                }
 
                 // two-lane noise == two serial calls
                 let (n0, n1) = prf_cbd_pair_i16(&rho, 3, 7);
@@ -2516,35 +2815,53 @@ fn main() {
     const N: usize = 10_000;
 
     // Inline Keccak + i64 NTT variant
-    let kg_ns  = measure_ns(N, || { std::hint::black_box(kyber_keygen(&seed, &zseed, &consts)); });
-    let sk     = kyber_keygen(&seed, &zseed, &consts);
-    let enc_ns = measure_ns(N, || { std::hint::black_box(kyber_encaps_inner(&sk.pk, &m, &consts)); });
+    let kg_ns = measure_ns(N, || {
+        std::hint::black_box(kyber_keygen(&seed, &zseed, &consts));
+    });
+    let sk = kyber_keygen(&seed, &zseed, &consts);
+    let enc_ns = measure_ns(N, || {
+        std::hint::black_box(kyber_encaps_inner(&sk.pk, &m, &consts));
+    });
     let (ct, _) = kyber_encaps_inner(&sk.pk, &m, &consts);
-    let dec_ns = measure_ns(N, || { std::hint::black_box(kyber_decaps(&sk, &ct, &consts)); });
+    let dec_ns = measure_ns(N, || {
+        std::hint::black_box(kyber_decaps(&sk, &ct, &consts));
+    });
     let total_ns = kg_ns + enc_ns + dec_ns;
 
     // sha3 asm + i64 NTT variant
-    let kg_hw  = measure_ns(N, || { std::hint::black_box(kyber_keygen_hw(&seed, &zseed, &consts)); });
-    let sk_hw  = kyber_keygen_hw(&seed, &zseed, &consts);
-    let enc_hw = measure_ns(N, || { std::hint::black_box(kyber_encaps_hw(&sk_hw.pk, &m, &consts)); });
+    let kg_hw = measure_ns(N, || {
+        std::hint::black_box(kyber_keygen_hw(&seed, &zseed, &consts));
+    });
+    let sk_hw = kyber_keygen_hw(&seed, &zseed, &consts);
+    let enc_hw = measure_ns(N, || {
+        std::hint::black_box(kyber_encaps_hw(&sk_hw.pk, &m, &consts));
+    });
     let (ct_hw, _) = kyber_encaps_hw(&sk_hw.pk, &m, &consts);
-    let dec_hw = measure_ns(N, || { std::hint::black_box(kyber_decaps_hw(&sk_hw, &ct_hw, &consts)); });
+    let dec_hw = measure_ns(N, || {
+        std::hint::black_box(kyber_decaps_hw(&sk_hw, &ct_hw, &consts));
+    });
     let total_hw = kg_hw + enc_hw + dec_hw;
 
     // NEON i16 NTT + sha3 (inline Keccak hashing) variant
-    let kg_neon  = measure_ns(N, || { std::hint::black_box(kyber_keygen_neon(&seed, &zseed)); });
-    let sk_neon  = kyber_keygen_neon(&seed, &zseed);
-    let enc_neon = measure_ns(N, || { std::hint::black_box(kyber_encaps_neon(&sk_neon.pk, &m)); });
+    let kg_neon = measure_ns(N, || {
+        std::hint::black_box(kyber_keygen_neon(&seed, &zseed));
+    });
+    let sk_neon = kyber_keygen_neon(&seed, &zseed);
+    let enc_neon = measure_ns(N, || {
+        std::hint::black_box(kyber_encaps_neon(&sk_neon.pk, &m));
+    });
     let (ct_neon, _) = kyber_encaps_neon(&sk_neon.pk, &m);
-    let dec_neon = measure_ns(N, || { std::hint::black_box(kyber_decaps_neon(&sk_neon, &ct_neon)); });
+    let dec_neon = measure_ns(N, || {
+        std::hint::black_box(kyber_decaps_neon(&sk_neon, &ct_neon));
+    });
     let total_neon = kg_neon + enc_neon + dec_neon;
 
     // Reference figures. LibOQS was rebuilt and re-measured on this machine
     // (gcc -O3 -march=native, same 10k-iteration methodology); 0.16.0 is ~21%
     // faster than 0.15.0 at ML-KEM-512. The Kyber C reference figure is carried
     // over from the 2026-03-19 session and was not re-measured.
-    let liboqs_016_us    = 16.19_f64;
-    let liboqs_015_us    = 20.43_f64;
+    let liboqs_016_us = 16.19_f64;
+    let liboqs_015_us = 20.43_f64;
     let kyber_c_total_us = 47.87_f64;
 
     println!("KYBER-512 FULL KEM  (keygen + encaps + decaps)");
@@ -2553,39 +2870,80 @@ fn main() {
     println!("  ── Inline pure-Rust Keccak (XKCP) + i64 NTT ──");
     println!("  Key Generation:   {:>7.2} µs", kg_ns / 1_000.0);
     println!("  Encapsulation:    {:>7.2} µs", enc_ns / 1_000.0);
-    println!("  Decapsulation:    {:>7.2} µs  (includes re-encryption)", dec_ns / 1_000.0);
-    println!("  TOTAL:            {:>7.2} µs  ({:.0} sessions/sec)",
-             total_ns / 1_000.0, 1e9 / total_ns);
+    println!(
+        "  Decapsulation:    {:>7.2} µs  (includes re-encryption)",
+        dec_ns / 1_000.0
+    );
+    println!(
+        "  TOTAL:            {:>7.2} µs  ({:.0} sessions/sec)",
+        total_ns / 1_000.0,
+        1e9 / total_ns
+    );
     println!();
     println!("  ── sha3 crate + asm + i64 NTT ──");
     println!("  Key Generation:   {:>7.2} µs", kg_hw / 1_000.0);
     println!("  Encapsulation:    {:>7.2} µs", enc_hw / 1_000.0);
-    println!("  Decapsulation:    {:>7.2} µs  (includes re-encryption)", dec_hw / 1_000.0);
-    println!("  TOTAL:            {:>7.2} µs  ({:.0} sessions/sec)",
-             total_hw / 1_000.0, 1e9 / total_hw);
+    println!(
+        "  Decapsulation:    {:>7.2} µs  (includes re-encryption)",
+        dec_hw / 1_000.0
+    );
+    println!(
+        "  TOTAL:            {:>7.2} µs  ({:.0} sessions/sec)",
+        total_hw / 1_000.0,
+        1e9 / total_hw
+    );
     println!();
     println!("  ── Inline Keccak + NEON i16 NTT (Montgomery) ──");
     println!("  Key Generation:   {:>7.2} µs", kg_neon / 1_000.0);
     println!("  Encapsulation:    {:>7.2} µs", enc_neon / 1_000.0);
-    println!("  Decapsulation:    {:>7.2} µs  (includes re-encryption)", dec_neon / 1_000.0);
-    println!("  TOTAL:            {:>7.2} µs  ({:.0} sessions/sec)",
-             total_neon / 1_000.0, 1e9 / total_neon);
+    println!(
+        "  Decapsulation:    {:>7.2} µs  (includes re-encryption)",
+        dec_neon / 1_000.0
+    );
+    println!(
+        "  TOTAL:            {:>7.2} µs  ({:.0} sessions/sec)",
+        total_neon / 1_000.0,
+        1e9 / total_neon
+    );
     println!();
     println!("  {}", "=".repeat(65));
     println!("  COMPARISON:");
     println!("  {}", "-".repeat(65));
-    println!("  LibOQS 0.16.0 (ML-KEM-512):          {:>6.2} µs  ({:.0}/sec)  baseline",
-             liboqs_016_us, 1e6 / liboqs_016_us);
-    println!("  LibOQS 0.15.0 (ML-KEM-512):          {:>6.2} µs  ({:.0}/sec)  {:.2}x",
-             liboqs_015_us, 1e6 / liboqs_015_us, liboqs_015_us / liboqs_016_us);
-    println!("  NEON i16 NTT + Keccak (this):         {:>6.2} µs  ({:.0}/sec)  {:.2}×",
-             total_neon / 1_000.0, 1e9 / total_neon, total_neon / 1_000.0 / liboqs_016_us);
-    println!("  sha3 asm + i64 NTT (this):            {:>6.2} µs  ({:.0}/sec)  {:.2}×",
-             total_hw / 1_000.0, 1e9 / total_hw, total_hw / 1_000.0 / liboqs_016_us);
-    println!("  inline Keccak + i64 NTT (this):       {:>6.2} µs  ({:.0}/sec)  {:.2}×",
-             total_ns / 1_000.0, 1e9 / total_ns, total_ns / 1_000.0 / liboqs_016_us);
-    println!("  Kyber C Reference:                    {:>6.2} µs  ({:.0}/sec)  {:.2}×",
-             kyber_c_total_us, 1e6 / kyber_c_total_us, kyber_c_total_us / liboqs_016_us);
+    println!(
+        "  LibOQS 0.16.0 (ML-KEM-512):          {:>6.2} µs  ({:.0}/sec)  baseline",
+        liboqs_016_us,
+        1e6 / liboqs_016_us
+    );
+    println!(
+        "  LibOQS 0.15.0 (ML-KEM-512):          {:>6.2} µs  ({:.0}/sec)  {:.2}x",
+        liboqs_015_us,
+        1e6 / liboqs_015_us,
+        liboqs_015_us / liboqs_016_us
+    );
+    println!(
+        "  NEON i16 NTT + Keccak (this):         {:>6.2} µs  ({:.0}/sec)  {:.2}×",
+        total_neon / 1_000.0,
+        1e9 / total_neon,
+        total_neon / 1_000.0 / liboqs_016_us
+    );
+    println!(
+        "  sha3 asm + i64 NTT (this):            {:>6.2} µs  ({:.0}/sec)  {:.2}×",
+        total_hw / 1_000.0,
+        1e9 / total_hw,
+        total_hw / 1_000.0 / liboqs_016_us
+    );
+    println!(
+        "  inline Keccak + i64 NTT (this):       {:>6.2} µs  ({:.0}/sec)  {:.2}×",
+        total_ns / 1_000.0,
+        1e9 / total_ns,
+        total_ns / 1_000.0 / liboqs_016_us
+    );
+    println!(
+        "  Kyber C Reference:                    {:>6.2} µs  ({:.0}/sec)  {:.2}×",
+        kyber_c_total_us,
+        1e6 / kyber_c_total_us,
+        kyber_c_total_us / liboqs_016_us
+    );
     println!("  {}", "-".repeat(65));
     println!();
     println!("================================================================\n");

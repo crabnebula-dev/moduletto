@@ -50,3 +50,24 @@ path = "fuzz_targets/fuzz_poly_mul.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "fuzz_dsa_sig_decode"
+path = "fuzz_targets/fuzz_dsa_sig_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_dsa_key_decode"
+path = "fuzz_targets/fuzz_dsa_key_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_dsa_roundtrip"
+path = "fuzz_targets/fuzz_dsa_roundtrip.rs"
+test = false
+doc = false
+bench = false

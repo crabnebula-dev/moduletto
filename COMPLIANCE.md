@@ -35,9 +35,10 @@ Article 64(10)(b) excludes administrative fines against open-source software ste
 - Changes are merged by the maintainer. Merge commits and releases are signed; commits that arrive through pull requests may carry the contributor's signature or none.
 - Security reviews and their remediation are recorded in `audits/`, each with the reviewed commit hash and a timestamp. Findings are fixed in the tree before the review is published.
 - The ML-KEM implementation (`src/kem.rs`) is tested against the NIST ACVP vectors for ML-KEM-512 and ML-KEM-768. The tests cover key generation, encapsulation, decapsulation and the FIPS 203 input checks (`tests/kem_kat.rs`). CI runs them on every push and pull request (`.github/workflows/ci.yml`), on x86-64 Linux and on arm64 macOS, so both the scalar and the NEON code paths are tested.
-- Secret-dependent arithmetic uses the branch-free code paths documented in the crate. The Coq proofs in `proofs/` cover the Barrett reduction, the modular arithmetic, the constant-time layer and the NTT. The fuzz targets in `fuzz/` check the NTT and the constant-time arithmetic against reference results.
-- Secret material (seeds, noise, Keccak states, re-encryption state, internal key structs) is wiped with `zeroize`, and a stack scrub follows each ML-KEM operation. Decapsulation does not branch on secret data; the implicit-rejection comparison goes through `subtle` and the rounding divisions by q are fixed-point multiplications. On AArch64 the ML-KEM entry points run with `PSTATE.DIT` set.
-- Timing behaviour is checked in CI by a dudect statistical test and a Valgrind-based (ctgrind-style) secret-tracking check; the Rocq proofs are built in CI as well.
+- The ML-DSA-65 implementation (`src/dsa.rs`) is tested against the NIST ACVP vectors for ML-DSA-65: key generation, signature generation through the pure, internal and external-μ interfaces (deterministic and hedged), and signature verification including the negative cases (`tests/dsa_kat.rs`). HashML-DSA is not implemented. CI runs these tests on both platforms as well.
+- Secret-dependent arithmetic uses the branch-free code paths documented in the crate. The Coq proofs in `proofs/` cover the Barrett reduction, the modular arithmetic, the constant-time layer and the Kyber-parameter NTT. They do not cover the ML-DSA NTT or its reductions, which unit tests check against the FIPS 204 definitions instead. The fuzz targets in `fuzz/` check the NTT and the constant-time arithmetic against reference results, and ML-DSA signature and key decoding and sign-then-verify round trips.
+- Secret material (seeds, noise, Keccak states, re-encryption state, internal key structs) is wiped with `zeroize`. For ML-DSA this includes the private key polynomials, μ, the mask and the rejected candidate signatures. ML-DSA verification wipes its buffers for tr, μ, w′, the w₁′ encoding and the recomputed c̃, as FIPS 204 section 3.6.3 asks for intermediates that may be sensitive. It computes μ in place rather than returning it by value. A stack scrub follows each ML-KEM operation and each ML-DSA key generation and signing, and `tests/stack_scrub.rs` checks it in the release and debug profiles. Verification is not followed by a stack scrub. Copies in callee frames, such as the Keccak permutation's locals, or in compiler spill slots can therefore remain after it returns. Decapsulation does not branch on secret data; the implicit-rejection comparison goes through `subtle` and the rounding divisions by q are fixed-point multiplications. ML-DSA key generation and signing branch only on the signing loop count, which FIPS 204 lets vary, and on the rejection of sampling candidates, which this crate treats as public (see the `dsa` module documentation). The loop count dominates signing time and its distribution depends on the private key, so the timing claim for signing holds at a given loop count. The dudect test compares two keys at the same count. `ExpandA` branches on the public seed ρ. On AArch64 the ML-KEM and ML-DSA entry points run with `PSTATE.DIT` set.
+- Timing behaviour is checked in CI by a dudect statistical test and a Valgrind-based (ctgrind-style) secret-tracking check; the Rocq proofs are built in CI as well. The ML-DSA cases of the Valgrind check first passed in the CI constant-time job on 2026-10-28 (GitHub Actions run 40753126905).
 - Dependencies are kept minimal: `subtle` and `zeroize`, plus `getrandom` behind an optional feature. CI runs `cargo audit` against the RustSec advisory database on every push, and Dependabot proposes dependency and GitHub Action updates weekly. Known-vulnerable dependencies are removed or updated when advisories are published.
 
 **Vulnerability handling.**
@@ -56,14 +57,14 @@ A manufacturer that integrates moduletto into a product it places on the market 
 | | |
 |---|---|
 | Licence | MIT OR Apache-2.0. Releases before the relicensing were published under the PolyForm Noncommercial License 1.0.0. |
-| Algorithms | ML-KEM-512 and ML-KEM-768 per FIPS 203, in `moduletto::kem` |
-| Test evidence | NIST ACVP vectors in `tests/kat/`, regenerated by `tests/kat/extract.mjs` from a named ACVP-Server commit |
+| Algorithms | ML-KEM-512 and ML-KEM-768 per FIPS 203, in `moduletto::kem`. Pure ML-DSA-65 per FIPS 204, in `moduletto::dsa`, with the internal and external-μ interfaces; HashML-DSA is not provided. |
+| Test evidence | NIST ACVP vectors for ML-KEM-512, ML-KEM-768 and ML-DSA-65 in `tests/kat/`, regenerated by `tests/kat/extract.mjs` from a named ACVP-Server commit. For ML-DSA-65: 25 keyGen, 90 sigGen and 45 sigVer cases (`tests/dsa_kat.rs`). |
 | Validation | Not validated under FIPS 140-3 (CMVP) or any other certification scheme |
-| Randomness | None built in by default. Callers supply randomness from a CSPRNG to the `*_derand` functions. The optional `getrandom` feature adds `keygen()` and `encaps(ek)` backed by the OS CSPRNG. |
-| Secret handling | Wiped with `zeroize` inside the crate; returned keys and shared secrets are plain arrays the caller must wipe |
+| Randomness | None built in by default. Callers supply randomness from a CSPRNG to the `*_derand` functions, and ξ and `rnd` to the ML-DSA functions. The optional `getrandom` feature adds `keygen()` and `encaps(ek)`, and the ML-DSA `keygen()`, `keygen_into` and `sign_hedged()`, backed by the OS CSPRNG. |
+| Secret handling | Wiped with `zeroize` inside the crate; returned private keys and shared secrets are plain arrays the caller must wipe |
 | Security reviews | `audits/`, with reviewed commit and timestamp |
 | Dependencies | `subtle` (BSD-3-Clause), `zeroize` (Apache-2.0 OR MIT), optional `getrandom` (MIT OR Apache-2.0) |
-| Third-party material | XKCP Keccak (public domain); pqcrystals Kyber reference constants (CC0-1.0 or Apache-2.0); NIST ACVP vectors (US Government work). Full attributions, dependency licences and licensing history in `NOTICE`. |
+| Third-party material | XKCP Keccak (public domain); pqcrystals Kyber reference constants and pqcrystals Dilithium reference formulas (CC0-1.0 or Apache-2.0); FIPS 204 zetas; NIST ACVP vectors (US Government work). Full attributions, dependency licences and licensing history in `NOTICE`. |
 | Vulnerability reports | GitHub private vulnerability reporting on this repository |
 
 ## What would change this
@@ -88,7 +89,7 @@ This statement covers the CRA only. It is not an assessment against export contr
 
 | | |
 |---|---|
-| Subject | moduletto: modular arithmetic, NTT and ML-KEM (FIPS 203) for lattice cryptography |
+| Subject | moduletto: modular arithmetic, NTT, ML-KEM (FIPS 203) and ML-DSA (FIPS 204) for lattice cryptography |
 | Status | Free and open-source software, stewarded by CrabNebula Ltd. Not placed or made available on the market as a product. Steward obligations under Article 24 apply. |
 | Steward | CrabNebula Ltd, Malta (C 103590) |
 | Assessed | 2026-09-27 |

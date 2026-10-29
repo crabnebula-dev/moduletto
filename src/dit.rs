@@ -10,10 +10,11 @@
 //! set (`examples/ct_dudect.rs`, `hw_mul64_*`). On Apple M3 and later, DIT
 //! also disables the data-memory-dependent prefetcher (GoFetch).
 //!
-//! The ML-KEM entry points in [`crate::kem`] run under [`with_dit`]. Code that
-//! uses the `ct_*` primitives of [`crate::modn_ct`] and [`crate::ntt`] on
-//! secrets should wrap the whole computation in [`with_dit`] as well; the
-//! per-operation cost of toggling the bit would dwarf the operations.
+//! The ML-KEM entry points in [`crate::kem`] and the ML-DSA entry points in
+//! [`crate::dsa`] run under [`with_dit`]. Code that uses the `ct_*`
+//! primitives of [`crate::modn_ct`] and [`crate::ntt`] on secrets should
+//! wrap the whole computation in [`with_dit`] as well; the per-operation
+//! cost of toggling the bit would dwarf the operations.
 //!
 //! On other architectures [`with_dit`] just calls the closure. x86-64 has no
 //! user-settable equivalent (Intel's DOITM is a kernel-controlled MSR).
@@ -113,7 +114,7 @@ mod tests {
     #[test]
     fn restores_previous_state() {
         let before = is_set();
-        let inside = with_dit(|| is_set());
+        let inside = with_dit(is_set);
         assert_eq!(is_set(), before);
         if available() {
             assert!(inside, "DIT not set inside with_dit on a core that has it");

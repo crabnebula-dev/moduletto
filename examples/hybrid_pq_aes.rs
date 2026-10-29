@@ -52,7 +52,10 @@ fn keygen() -> KeyPair {
     OsRng.fill_bytes(&mut *d);
     OsRng.fill_bytes(&mut *z);
     let (ek, dk) = ml_kem_512::keygen_derand(&d, &z);
-    KeyPair { ek, dk: Zeroizing::new(dk) }
+    KeyPair {
+        ek,
+        dk: Zeroizing::new(dk),
+    }
 }
 
 /// Encrypted message: ML-KEM ciphertext + AES-GCM nonce + AES-GCM ciphertext.
@@ -96,9 +99,15 @@ fn hybrid_encrypt(ek: &[u8], plaintext: &[u8]) -> Result<HybridCiphertext, Hybri
 
     let cipher = Aes256Gcm::new_from_slice(&*shared_secret).expect("32-byte key");
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    let aes_ct = cipher.encrypt(&nonce, plaintext).map_err(|_| HybridError::Authentication)?;
+    let aes_ct = cipher
+        .encrypt(&nonce, plaintext)
+        .map_err(|_| HybridError::Authentication)?;
 
-    Ok(HybridCiphertext { kem_ct, nonce: nonce.into(), aes_ct })
+    Ok(HybridCiphertext {
+        kem_ct,
+        nonce: nonce.into(),
+        aes_ct,
+    })
 }
 
 /// Decrypt with the recipient's decapsulation key.
@@ -123,8 +132,12 @@ fn main() {
     println!("1. Generating ML-KEM-512 keypair...");
     let start = std::time::Instant::now();
     let kp = keygen();
-    println!("   Done in {:.1} us (ek {} bytes, dk {} bytes)\n",
-        start.elapsed().as_nanos() as f64 / 1000.0, EK_BYTES, DK_BYTES);
+    println!(
+        "   Done in {:.1} us (ek {} bytes, dk {} bytes)\n",
+        start.elapsed().as_nanos() as f64 / 1000.0,
+        EK_BYTES,
+        DK_BYTES
+    );
 
     let messages = [
         "Hello from the post-quantum world!",
@@ -145,15 +158,25 @@ fn main() {
         let ct = hybrid_encrypt(&kp.ek, msg.as_bytes()).expect("encrypt");
         let enc_time = start.elapsed();
         println!("     ML-KEM ciphertext: {} bytes", CT_BYTES);
-        println!("     AES-GCM ciphertext: {} bytes (plaintext {} + tag 16)", ct.aes_ct.len(), msg.len());
+        println!(
+            "     AES-GCM ciphertext: {} bytes (plaintext {} + tag 16)",
+            ct.aes_ct.len(),
+            msg.len()
+        );
         println!("     Total overhead: {} bytes", CT_BYTES + 12 + 16);
-        println!("     Encrypt time: {:.1} us", enc_time.as_nanos() as f64 / 1000.0);
+        println!(
+            "     Encrypt time: {:.1} us",
+            enc_time.as_nanos() as f64 / 1000.0
+        );
 
         let start = std::time::Instant::now();
         let plaintext = hybrid_decrypt(&kp, &ct).expect("decrypt");
         let dec_time = start.elapsed();
         assert_eq!(plaintext, msg.as_bytes(), "roundtrip failed");
-        println!("     Decrypt time: {:.1} us", dec_time.as_nanos() as f64 / 1000.0);
+        println!(
+            "     Decrypt time: {:.1} us",
+            dec_time.as_nanos() as f64 / 1000.0
+        );
         println!("     Roundtrip: OK\n");
     }
 
@@ -163,7 +186,9 @@ fn main() {
     let mut tampered = ct.clone();
     tampered.aes_ct[0] ^= 1;
     match hybrid_decrypt(&kp, &tampered) {
-        Err(e @ HybridError::Authentication) => println!("   Tampered AES ciphertext rejected: {e}"),
+        Err(e @ HybridError::Authentication) => {
+            println!("   Tampered AES ciphertext rejected: {e}")
+        }
         other => panic!("tampered AES ciphertext was not rejected: {other:?}"),
     }
 

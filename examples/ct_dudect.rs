@@ -21,6 +21,29 @@
 //!   against random ones.
 //! - `modn_ct_ops_fixed_vs_random`: 256 `ct_mul`/`ct_add`/`ct_sub`/`ct_select`
 //!   on a fixed input against random ones.
+//! - `dsa_sign_key_a_vs_key_b`: ML-DSA-65 hedged signing of one message under
+//!   two fixed private keys, at the same rejection-loop count. The loop
+//!   count is public by design (FIPS 204 lets it vary) and dominates the
+//!   timing. Its distribution depends on the key through c·s1, c·s2 and
+//!   c·t0, so two keys differ in mean count. An earlier version of this
+//!   bench drew a fresh `rnd` per sample and let the count vary. On CI
+//!   (x86-64) it reported max t = −10.94 and +10.44 from that difference
+//!   alone. Now each sample's `rnd` is drawn, before timing, until signing
+//!   under that sample's key takes exactly one iteration. The count comes
+//!   from `ml_dsa_65::sign_iterations`, a hidden function behind the
+//!   `ct-bench` feature. Only the production `ml_dsa_65::sign` is timed.
+//!   The timed call still runs the whole secret-dependent path once:
+//!   decoding and NTT of the key, ρ″, ExpandMask, the matrix product,
+//!   Decompose, SampleInBall, the four checks, the hint and the encoding.
+//!   A difference between the classes would come from secret-dependent work
+//!   at a fixed loop count. Rejected iterations run the same loop body, and
+//!   `examples/valgrind_ct.rs` checks signings with several iterations. The
+//!   two keys share ρ and tr and differ in K, s1, s2 and t0. ρ and tr are
+//!   public. ExpandA over ρ is variable-time by design, so a different ρ
+//!   would separate the classes by public data alone. With two unrelated
+//!   keys an earlier version reported |t| up to 6.7 on Apple M5. At one
+//!   iteration per sample, three runs on Apple M5 gave max t = +1.95,
+//!   −2.98 and −2.34.
 //! - `hw_mul64_zero_vs_random` and `hw_mul64_zero_vs_random_dit`: not this
 //!   crate's code but the CPU's: a dependent chain of 64-bit multiplies on
 //!   all-zero against random operands, with `PSTATE.DIT` clear and set. On
@@ -30,36 +53,41 @@
 //!   arithmetic benches above are wrapped in it here for the same reason.
 //!
 //! Key generation is not measured: `SampleNTT` over the public seed ρ is
-//! variable-time by design (FIPS 203), and ρ changes with every key.
+//! variable-time by design (FIPS 203), and ρ changes with every key. The same
+//! holds for ML-DSA key generation (`ExpandA` over ρ, and the public
+//! rejection pattern of `ExpandS`).
 //!
 //! Environment: `DUDECT_SAMPLES` (default 50 000) sets the samples per bench;
 //! `DUDECT_FIXED=zero` uses all-zero inputs for the fixed class of the
 //! arithmetic benches instead of one fixed random input (with DIT clear, zero
 //! operands alone move the multiplier's timing; see `hw_mul64_*`).
 //!
-//! Run everything once:   cargo run --release --example ct_dudect
-//! Run one for longer:    cargo run --release --example ct_dudect -- --continuous decaps_valid_vs_tampered_768
+//! Run everything once:   cargo run --release --features ct-bench --example ct_dudect
+//! Run one for longer:    cargo run --release --features ct-bench --example ct_dudect -- \
+//!                          --continuous decaps_valid_vs_tampered_768
 
-use dudect_bencher::{
-    ctbench_main,
-    rand::RngExt,
-    BenchRng, Class, CtRunner,
-};
+use dudect_bencher::{ctbench_main, rand::RngExt, BenchRng, Class, CtRunner};
 use moduletto::dit::with_dit;
+use moduletto::dsa::ml_dsa_65;
 use moduletto::kem::{ml_kem_512, ml_kem_768};
 use moduletto::modn_ct::ConstantTimeOps;
 use moduletto::{KyberCoeff, ModN, NTTPoly, KYBER_N};
 
 /// Samples per benchmark across both classes (`DUDECT_SAMPLES` overrides).
 fn samples() -> usize {
-    std::env::var("DUDECT_SAMPLES").ok().and_then(|v| v.parse().ok()).unwrap_or(50_000)
+    std::env::var("DUDECT_SAMPLES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(50_000)
 }
 
 /// `DUDECT_FIXED=zero` uses all-zero inputs for the fixed class of the
 /// arithmetic benches (the dudect paper's choice); the default is one fixed
 /// random input.
 fn fixed_is_zero() -> bool {
-    std::env::var("DUDECT_FIXED").map(|v| v == "zero").unwrap_or(false)
+    std::env::var("DUDECT_FIXED")
+        .map(|v| v == "zero")
+        .unwrap_or(false)
 }
 
 fn bytes32(rng: &mut BenchRng) -> [u8; 32] {
@@ -69,7 +97,11 @@ fn bytes32(rng: &mut BenchRng) -> [u8; 32] {
 }
 
 fn class(rng: &mut BenchRng) -> Class {
-    if rng.random::<bool>() { Class::Left } else { Class::Right }
+    if rng.random::<bool>() {
+        Class::Left
+    } else {
+        Class::Right
+    }
 }
 
 macro_rules! kem_benches {
@@ -117,10 +149,13 @@ macro_rules! kem_benches {
             let inputs: Vec<(Class, [u8; 32])> = (0..samples())
                 .map(|_| {
                     let cls = class(rng);
-                    (cls, match cls {
-                        Class::Left => fixed,
-                        Class::Right => bytes32(rng),
-                    })
+                    (
+                        cls,
+                        match cls {
+                            Class::Left => fixed,
+                            Class::Right => bytes32(rng),
+                        },
+                    )
                 })
                 .collect();
             for (cls, m) in &inputs {
@@ -142,6 +177,50 @@ kem_benches!(
     decaps_fixed_vs_random_message_768,
     encaps_fixed_vs_random_message_768
 );
+
+/// Rejection-loop iterations of every timed ML-DSA signing, in both classes.
+const DSA_ITERATIONS: u32 = 1;
+
+fn dsa_sign_key_a_vs_key_b(runner: &mut CtRunner, rng: &mut BenchRng) {
+    let (_, sk_a) = ml_dsa_65::keygen_internal(&bytes32(rng));
+    let (_, other) = ml_dsa_65::keygen_internal(&bytes32(rng));
+    // Key B keeps A's public parts (ρ and tr) and takes the secret parts
+    // (K, s1, s2, t0) of another key. ExpandA over ρ is variable-time by
+    // design, so a different ρ alone would separate the classes.
+    let mut sk_b = sk_a;
+    sk_b[32..64].copy_from_slice(&other[32..64]);
+    sk_b[128..].copy_from_slice(&other[128..]);
+    let m = bytes32(rng);
+    // The loop count is public and its mean differs between keys, so every
+    // timed signing runs exactly DSA_ITERATIONS iterations. For each sample,
+    // draw rnd until signing under that sample's key takes that many.
+    let rnd_for = |sk: &[u8], rng: &mut BenchRng| loop {
+        let rnd = bytes32(rng);
+        let (_, n) = ml_dsa_65::sign_iterations(sk, &m, b"", &rnd).unwrap();
+        if n == DSA_ITERATIONS {
+            break rnd;
+        }
+    };
+    // Each sample owns a heap copy of its key, allocated in sample order.
+    // With one fixed buffer per class, each class would always run at its
+    // own address, so cache-set and 4K-aliasing effects would separate the
+    // classes on x86-64 with no secret involved.
+    let inputs: Vec<(Class, Box<[u8; ml_dsa_65::SK_BYTES]>, [u8; 32])> = (0..samples())
+        .map(|_| {
+            let cls = class(rng);
+            let sk = match cls {
+                Class::Left => &sk_a,
+                Class::Right => &sk_b,
+            };
+            let rnd = rnd_for(sk, rng);
+            (cls, Box::new(*sk), rnd)
+        })
+        .collect();
+    for (cls, sk, rnd) in &inputs {
+        // The production entry point, not the counting one.
+        runner.run_one(*cls, || ml_dsa_65::sign(&sk[..], &m, b"", rnd).unwrap());
+    }
+}
 
 fn random_poly(rng: &mut BenchRng) -> NTTPoly {
     let mut coeffs = [KyberCoeff::zero(); KYBER_N];
@@ -252,6 +331,7 @@ ctbench_main!(
     encaps_fixed_vs_random_message_768,
     ntt_ct_mul_fixed_vs_random,
     modn_ct_ops_fixed_vs_random,
+    dsa_sign_key_a_vs_key_b,
     hw_mul64_zero_vs_random,
     hw_mul64_zero_vs_random_dit
 );

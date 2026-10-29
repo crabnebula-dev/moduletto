@@ -1,5 +1,6 @@
 moduletto
-Optimized modular arithmetic, NTT and ML-KEM (FIPS 203) for lattice cryptography
+Optimized modular arithmetic, NTT, ML-KEM (FIPS 203) and ML-DSA (FIPS 204) for
+lattice cryptography
 
 Copyright (c) 2026 CrabNebula Ltd and Daniel Thompson-Yvetot
 
@@ -37,7 +38,7 @@ is dual licensed as above without additional terms or conditions.
 Third-party material included in this product
 ------------------------------------------------------------------------------
 
-1. Keccak-f[1600] permutation (src/kem.rs, examples/kyber_benchmark.rs)
+1. Keccak-f[1600] permutation (src/keccak.rs, examples/kyber_benchmark.rs)
    Translated to Rust from the eXtended Keccak Code Package (XKCP),
    https://github.com/XKCP/XKCP, files KeccakP-1600-opt64.c,
    KeccakP-1600-64.macros and KeccakP-1600-unrolling.macros, by the Keccak
@@ -56,18 +57,27 @@ Third-party material included in this product
    Gregor Seiler, Damien Stehlé). Licensed under CC0 1.0 Universal or the
    Apache License, Version 2.0, at the user's option.
 
-3. NIST ACVP test vectors (tests/kat/)
+3. ML-DSA reference formulas (src/dsa.rs)
+   The branch-free reduce32 and Decompose formulas follow the pq-crystals
+   Dilithium reference implementation, https://github.com/pq-crystals/dilithium,
+   by the CRYSTALS-Dilithium team. Licensed under CC0 1.0 Universal or the
+   Apache License, Version 2.0, at the user's option. The zetas table is
+   FIPS 204 Appendix B.
+
+4. NIST ACVP test vectors (tests/kat/)
    Extracted from https://github.com/usnistgov/ACVP-Server,
-   gen-val/json-files/ML-KEM-keyGen-FIPS203 and ML-KEM-encapDecap-FIPS203,
+   gen-val/json-files/ML-KEM-keyGen-FIPS203, ML-KEM-encapDecap-FIPS203,
+   ML-DSA-keyGen-FIPS204, ML-DSA-sigGen-FIPS204 and ML-DSA-sigVer-FIPS204,
    by tests/kat/extract.mjs. A work of the United States Government, not
    subject to copyright protection in the United States (17 U.S.C. § 105).
    NIST provides it without warranty; the vector files record their source.
 
-4. Algorithm
-   ML-KEM is specified in NIST FIPS 203 (August 2024). This product
-   implements the specification; it has not been validated under FIPS 140-3
-   (CMVP) or any other scheme. No patent assurances are given beyond those in
-   Section 3 of the Apache License.
+5. Algorithm
+   ML-KEM is specified in NIST FIPS 203 (August 2024) and ML-DSA in NIST
+   FIPS 204 (August 2024). This product implements both specifications
+   (for ML-DSA, the pure ML-DSA-65 parameter set only); it has not been
+   validated under FIPS 140-3 (CMVP) or any other scheme. No patent
+   assurances are given beyond those in Section 3 of the Apache License.
 
 ------------------------------------------------------------------------------
 Dependencies (not included in the source; fetched at build time)
@@ -103,14 +113,16 @@ RustSec advisory database in CI.
 Development disclosure
 ------------------------------------------------------------------------------
 
-Parts of this product were written or revised with the assistance of an AI
-system (Claude Mythos 5.1, Anthropic) operating under the direction and
-review of the maintainer. Commits carry a Co-Authored-By trailer where that
-applies. An AI-assisted security review and its remediation are recorded in
-audits/README.md with the reviewed commit and timestamps. That review is not
-a substitute for independent human cryptographic review, and no warranty is
-implied by it.
+Parts of this product were written or revised with the assistance of AI
+systems (Claude Mythos 5.1 and Claude Opus 5.5, Anthropic) operating under
+the direction and review of the maintainer. The ML-DSA implementation
+(src/dsa.rs) was written this way and has not yet had a security review.
+Commits carry a Co-Authored-By trailer where that applies. An AI-assisted
+security review and its remediation are recorded in audits/README.md with
+the reviewed commit and timestamps. That review is not a substitute for
+independent human cryptographic review, and no warranty is implied by it.
 
 The formal proofs in proofs/ were machine-checked with Rocq (Coq) 9.1. They
 establish functional correctness of the branchless arithmetic, not the timing
-of compiled code; see README.md, "Security".
+of compiled code; see README.md, "Security". They cover the Kyber-parameter
+arithmetic and NTT, not the ML-DSA NTT.
