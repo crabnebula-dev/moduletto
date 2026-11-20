@@ -30,7 +30,7 @@ use moduletto::dsa::ml_dsa_65;
 use moduletto::kem::{ml_kem_512, ml_kem_768, KemError};
 use moduletto::modn_ct::ConstantTimeOps;
 use moduletto::valgrind::{declassify, poison, running};
-use moduletto::{KyberCoeff, ModN, NTTPoly, KYBER_N};
+use moduletto::{ModN, NTTPoly, KYBER_N};
 use std::hint::black_box;
 
 type Keygen = fn(&[u8; 32], &[u8; 32]) -> (Vec<u8>, Vec<u8>);
@@ -177,12 +177,14 @@ fn field_ops() {
 }
 
 fn ntt_ops() {
-    let mut a = NTTPoly::new(core::array::from_fn(|i| KyberCoeff::new((i * 13) as i64)));
-    let mut b = NTTPoly::new(core::array::from_fn(|i| {
-        KyberCoeff::new((i * 7 + 1) as i64)
-    }));
-    poison(&mut a.coeffs);
-    poison(&mut b.coeffs);
+    // Secret coefficients enter as raw integers, outside [0, q) and of both
+    // signs, so the reduction in `from_slice` (`ModN::ct_new`) is checked too.
+    let mut raw_a: [i64; KYBER_N] = core::array::from_fn(|i| (i as i64 * 13) - 1_000_000_007);
+    let mut raw_b: [i64; KYBER_N] = core::array::from_fn(|i| (i as i64 * 7 + 1) << 40);
+    poison(&mut raw_a);
+    poison(&mut raw_b);
+    let a = NTTPoly::from_slice(&raw_a);
+    let b = NTTPoly::from_slice(&raw_b);
     let p = a.ct_mul_ntt(&b);
     let q = a.ct_ntt().ct_add(&b.ct_ntt()).ct_intt().ct_sub(&p);
     black_box(q);

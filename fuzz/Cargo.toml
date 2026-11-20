@@ -10,6 +10,8 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 arbitrary = { version = "1", features = ["derive"] }
+# Independent SHAKE256 for the implicit-rejection oracle in fuzz_kem_decaps
+sha3 = "0.10"
 
 [dependencies.moduletto]
 path = ".."
@@ -68,6 +70,20 @@ bench = false
 [[bin]]
 name = "fuzz_dsa_roundtrip"
 path = "fuzz_targets/fuzz_dsa_roundtrip.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_kem_decaps"
+path = "fuzz_targets/fuzz_kem_decaps.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_kem_encaps"
+path = "fuzz_targets/fuzz_kem_encaps.rs"
 test = false
 doc = false
 bench = false

@@ -845,10 +845,13 @@ impl NTTPoly {
     }
 
     /// Create from slice (pads with zeros if needed)
+    ///
+    /// The values are reduced with [`ModN::ct_new`], without a division, so
+    /// this is safe for secret coefficients.
     pub fn from_slice(data: &[i64]) -> Self {
         let mut coeffs = [KyberCoeff::zero(); KYBER_N];
         for (i, &val) in data.iter().take(KYBER_N).enumerate() {
-            coeffs[i] = KyberCoeff::new(val);
+            coeffs[i] = KyberCoeff::ct_new(val);
         }
         Self { coeffs }
     }

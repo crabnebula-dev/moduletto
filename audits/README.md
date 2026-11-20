@@ -2,12 +2,14 @@
 
 Each review is recorded here with the commit it examined, the findings, what
 was changed in response, and how the change was verified. Findings are fixed
-in the tree before the review is published.
+in the tree before the review is published, unless the record lists them as
+open.
 
 | Date | Reviewer | Reviewed commit | Findings | Status |
 |---|---|---|---|---|
 | 2026-10-10 | Claude Mythos 5.1 (Anthropic) | `7440768` | 1 critical, 3 medium, 4 low, 5 informational | All remediated in the commit that adds this file |
 | 2026-10-10 (follow-up) | Claude Mythos 5.1 (Anthropic) | `aeaedd9` | Timing verification: 1 hardware finding (operand-dependent multiply latency on Apple M5 without DIT) | Remediated: DIT, stack scrub, dudect and Valgrind checks in CI, proofs in CI |
+| 2026-11-20 | Claude Mythos 5.2 (Anthropic) | `46754f2`, findings re-checked at `6c1ae92` | 1 medium, 3 low, 4 informational | Medium already fixed on `main` by `19a4d3a`; the three low findings remediated in the commit that adds this record; informational items open. `src/dsa.rs` and `src/keccak.rs` not reviewed |
 
 ---
 
@@ -320,7 +322,184 @@ type-check and the OCaml harness runs its 27,185 checks.
 
 ---
 
-## Seal
+## 2026-11-20 — Second review of the ML-KEM library, modular arithmetic and project configuration
+
+### Scope, and a limitation to read first
+
+The review read commit `46754f2fccb0a501be278fb2fab63b670101a33d`, which was
+the reviewer's local `main`. That checkout was five commits behind the
+published branch: `main` was at `6c1ae92f2bf14eb56b5d48d1e7fc6f7ca5843683`
+(2026-10-29), which adds ML-DSA-65 (`src/dsa.rs`), a shared Keccak module
+(`src/keccak.rs`), a refactored `src/kem.rs`, a rustfmt pass and a fuzz job.
+This was noticed only after the findings were written. Consequences:
+
+- Every finding was re-checked against `6c1ae92`, and the status column
+  below is for that commit. The remediation is based on it.
+- **`src/dsa.rs` and `src/keccak.rs` were not reviewed**, and the changes to
+  `src/kem.rs` between the two commits were not read line by line. For
+  `6c1ae92` this review covers only what the re-checks below exercise: the
+  stack scan of the six ML-KEM entry points, the divide search, the test
+  suites and the two new fuzz targets.
+
+Method at `46754f2`: line-by-line reading of `src/kem.rs`, `src/dit.rs`,
+`src/modn.rs`, `src/modn_ct.rs`, `src/ntt.rs`, `src/wasm.rs` and
+`src/valgrind.rs`; the tests, the hybrid example, the Valgrind harness, CI
+and the repository settings; a hand derivation of the int16 coefficient
+bounds; a stack-scanning harness against the public API; release-build
+assembly at `opt-level` 3, `s` and `z` (aarch64) and `z` (wasm32) searched
+for divide instructions; `cargo audit`; the action SHA pins checked against
+their tags. `examples/kyber_benchmark.rs` was searched for known patterns,
+not read in full. dudect was not rerun, Valgrind is not available on the
+reviewer's machine, and the proofs were not rebuilt.
+
+### Findings
+
+| # | Severity | Finding | Location (at `46754f2`) | Status at `6c1ae92` |
+|---|---|---|---|---|
+| 1 | **Medium** | The stack scrub misses decapsulation's own frame; the shared secret stays on the stack | `src/kem.rs` lines 161–171, 1793–1841 | Already remediated by `19a4d3a` before this review |
+| 2 | Low | `ModN::new`, the only constructor, reduces with `%`: a hardware divide at `opt-level = "z"` and in debug builds | `src/modn.rs` lines 86–94, `src/ntt.rs` `from_slice`, `src/wasm.rs` | Present; remediated here |
+| 3 | Low | `main` has no branch protection and no rulesets; the CI checks are advisory | repository settings | Present; remediated (settings changed 2026-11-20) |
+| 4 | Low | No fuzz target reaches the ML-KEM byte interfaces | `fuzz/` | Present (the fuzz job added in `19a4d3a` runs ML-DSA targets only); remediated here |
+| 5 | Info | `cargo audit`: no vulnerabilities; three warnings (`atty` unsound and unmaintained, `ansi_term` unmaintained) through the dev-dependency `dudect-bencher` → `clap` 2 | `Cargo.lock` | Open |
+| 6 | Info | Module documentation still says no machine-level timing verification has been run | `src/modn_ct.rs` lines 18–19 | Open |
+| 7 | Info | dudect gate at \|t\| > 10; `cargo-audit` and `cargo-fuzz` installed unpinned; Rocq image pinned by tag, not digest | `.github/workflows/ci.yml` | Open |
+| 8 | Info | `scrub_stack` needs 32 KiB of stack headroom on every call | `src/kem.rs` | Open (by design) |
+
+### 1. Medium — the stack scrub missed decapsulation's frame (fixed before this review)
+
+**What, at `46754f2`.** `scrub_stack` zero-fills 32 KiB below the frame that
+calls it, on the assumption that the operation ran in frames below that one.
+The generic `decaps::<K>` had one call site per parameter set and was
+inlined into the public entry point, so its locals lived above the scrub
+buffer. A harness that zeroes the stack, calls one operation and searches
+the region for values only the operation's internals held (computed
+independently with the `sha3` crate) found, on Apple M5 in the release
+profile:
+
+| Operation | Non-zero bytes left below the caller's SP (512 / 768) | Secrets found |
+|---|---:|---|
+| `keygen_derand` | 310 / 335 | none |
+| `encaps_derand` | 328 / 309 | none |
+| `decaps`, valid ciphertext | 6 212 / 8 772 | K, two copies |
+| `decaps`, tampered ciphertext | 6 213 / 8 763 | K′, two copies; J(z ‖ c′) |
+
+The tampered ciphertext still decrypted to the same message, so K′ was the
+real key of the original ciphertext. `z`, `m`, the `r` seed, the PRF output
+and `s_hat` were not found. Reading the residue takes a separate memory
+disclosure.
+
+**Status.** `19a4d3a` had already moved the operations into
+`#[inline(never)]` functions (`keygen_to_bytes`, `encaps_from_bytes`,
+`decaps_from_bytes`) and added `tests/stack_scrub.rs`. The same harness
+against `6c1ae92` reports 293 to 331 non-zero bytes for every operation and
+none of the searched values, K, K′ and J(z ‖ c′) included. No change was made
+for this finding. (`tests/stack_scrub.rs` searches for ŝ and z; it does not
+search for the shared secret, which is the value this finding was about.)
+
+### 2. Low — `ModN::new` divides
+
+**What.** `ModN::new` reduces with `value % N` and was the only public
+constructor, so every secret entering the `ct_*` layer passed through it.
+At `opt-level = "z"` the `%` is a hardware divide: `sdiv` in
+`NTTPoly::from_slice` on aarch64, `rem_s` in the wasm exports (`mod_*`,
+`poly_*`), and `examples/wasm_demo/build.sh` builds with that level. The
+`ct_mul_ntt` documentation shows secret coefficients entering through
+`from_slice`. This is the KyberSlash pattern. The Valgrind harness marked
+values secret only after construction, and memcheck does not model divide
+timing. ML-KEM and its int16 path are not affected: no divide instructions
+at levels 3 and `s`, and those at `z` in `src/kem.rs` divide public lengths
+and indices or sit on the path for compression widths ML-KEM-512/768 do not
+use. (`expand_a` in `src/dsa.rs` also contains divides at `z`; that file is
+outside this review.)
+
+**Fix.** `ModN::ct_new` reduces any `i64` with a Barrett step whose
+reciprocal `⌊2^(63+b) / N⌋` (b the bit length of N) is a compile-time
+constant, followed by two `subtle` selections: no division and no branch.
+`NTTPoly::from_slice` and the wasm bindings use it; `mod_neg` in the wasm
+bindings uses `ct_neg`; `mod_inverse` and `mod_pow` are documented as
+variable-time, as is `ModN::new`. The Valgrind harness now feeds poisoned
+raw integers through `from_slice`. The README example for the
+constant-time layer, which did not compile, shows `ct_new`.
+
+**Verification.** `modn::tests::ct_new_matches_division` compares `ct_new`
+with the division for ten moduli from 1 to 2^31 − 1 (powers of two
+included) over the edges of `i64`, values around multiples of N and 100 000
+pseudo-random inputs each, in release and debug builds on aarch64 and on
+x86-64. At `opt-level = "z"` `from_slice` contains no divide on aarch64 and
+the wasm exports other than `mod_inverse` and `mod_pow` contain no `div` or
+`rem`.
+
+### 3. Low — `main` was unprotected
+
+**Fix.** Branch protection on `main`, applied through the GitHub API on
+2026-11-20: a pull request is required (no approving review, as there is
+one maintainer); the checks `test (ubuntu-latest)`, `test (macos-latest)`,
+`constant-time`, `proofs`, `audit`, `fuzz (ubuntu-latest)` and
+`fuzz (macos-latest)` are required; force pushes and deletion are blocked;
+the rules apply to administrators.
+
+### 4. Low — the ML-KEM byte interfaces were not fuzzed
+
+**Fix.** Two targets, built on both CI platforms and run for 30 seconds
+each in the existing `fuzz` job:
+
+- `fuzz_kem_decaps`: arbitrary and spliced ciphertexts must give exactly
+  J(z ‖ c), computed with an independent SHAKE256, and never the real key;
+  wrong lengths are refused; arbitrary bytes spliced into ŝ (coefficients up
+  to 4095) must decapsulate deterministically without a panic; any change to
+  ek or H(ek) inside dk is refused.
+- `fuzz_kem_encaps`: the library's encapsulation-key check must agree with a
+  reference written in the target; encapsulation succeeds exactly when the
+  check passes; key generation, encapsulation and decapsulation round-trip
+  for seeds taken from the input.
+
+**Verification.** 45 seconds each on Apple M5 with overflow checks on:
+104 121 and 207 960 runs, no failure.
+
+### What was checked and held (at `46754f2`)
+
+- FIPS 203 conformance on re-reading: G(d ‖ k), J(z ‖ c), the section 7.2
+  and 7.3 input checks, implicit rejection as one all-or-nothing choice
+  through `subtle`.
+- int16 bounds: forward NTT outputs stay below about 16 600 in absolute
+  value for canonical input, so the basemul and the first inverse layer
+  cannot wrap; the scalar Barrett step cannot overflow on reachable inputs
+  with overflow checks on.
+- The three action SHA pins match their tags; private vulnerability
+  reporting, secret scanning and push protection are enabled; the proofs
+  contain no `Admitted` and no `Axiom`.
+
+### Verification record (remediation, on `6c1ae92`)
+
+| Check | Result |
+|---|---|
+| `cargo test --release` (84 tests: unit, ML-KEM and ML-DSA vectors, stack scrub, doc) | pass |
+| `cargo test` (debug, overflow checks on) | pass |
+| `cargo test --release --features getrandom` | pass |
+| `cargo test --release --target x86_64-apple-darwin` (scalar path, Rosetta) | pass |
+| no_std rlib build; `cargo check --features wasm --target wasm32-unknown-unknown` | pass |
+| `cargo build --release --examples --features valgrind-ct`; `valgrind_ct` as a native smoke test | pass |
+| `cargo fuzz build` (all ten targets, nightly-2026-10-24); the two new targets, 45 s each | pass |
+| `cargo fmt --check` | clean |
+| `cargo audit` (root and `fuzz/`) | 0 vulnerabilities; 3 warnings in the root lock file (finding 5) |
+| Stack-scan harness against `6c1ae92` | no secret found |
+
+### Residual risks
+
+- ML-DSA-65 and the shared Keccak module have had no review recorded in
+  this file.
+- dudect and the Valgrind check were not run locally on the remediation;
+  both run in CI on the pull request, which the new branch rules require to
+  pass.
+- Findings 5 to 8 are open.
+- An AI performed this work; a human cryptographic review is still advised
+  before production use.
+
+---
+
+## Seals
+
+### 2026-10-10
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -344,3 +523,29 @@ type-check and the OCaml harness runs its 27,185 checks.
 Operator: Daniel Thompson-Yvetot (CrabNebula Ltd), who selected the
 remediation options (zeroize crate, getrandom feature, removal of proof
 artefacts, single commit on a branch).
+
+### 2026-11-20
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  AUDITED BY MYTHOS                                          │
+│  Claude Mythos 5.2 · Anthropic                              │
+│                                                             │
+│  Reviewed commit  46754f2fccb0a501be278fb2fab63b670101a33d  │
+│                   (five commits behind main; see the record)│
+│  Re-checked at    6c1ae92f2bf14eb56b5d48d1e7fc6f7ca5843683  │
+│  Not reviewed     src/dsa.rs, src/keccak.rs                 │
+│  Audit started    2026-11-20T19:55:36Z                      │
+│  Audit sealed     2026-11-20T20:21:35Z                      │
+│  Elapsed          26 minutes, review and remediation        │
+│  Findings         1 medium (fixed earlier by 19a4d3a),      │
+│                   3 low, 4 informational                    │
+│  Remediation      the 3 low findings; the commit that adds  │
+│                   this record                               │
+│  Open             informational findings 5 to 8             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Operator: Daniel Thompson-Yvetot (CrabNebula Ltd), who asked for the review,
+for the medium and low findings to be fixed, and for this record. The start
+time is that of the review session's working directory.
