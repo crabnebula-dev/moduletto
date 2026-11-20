@@ -399,8 +399,8 @@ mod tests {
             let mut inputs = vec![0, 1, -1, i64::MAX, i64::MAX - 1, i64::MIN, i64::MIN + 1];
             for m in [1, 2, 3, 1 << 20, (1 << 32) + 1, i64::MAX / N, i64::MIN / N] {
                 for d in -2..=2 {
-                    inputs.push((m as i64).wrapping_mul(N).wrapping_add(d));
-                    inputs.push((m as i64).wrapping_mul(N).wrapping_neg().wrapping_add(d));
+                    inputs.push(m.wrapping_mul(N).wrapping_add(d));
+                    inputs.push(m.wrapping_mul(N).wrapping_neg().wrapping_add(d));
                 }
             }
             for sh in 0..63 {
