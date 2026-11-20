@@ -83,8 +83,8 @@ fn main() {
 
     // Create small test polynomial
     let mut test_poly = NTTPoly::zero();
-    for i in 0..5 {
-        test_poly.coeffs[i] = KyberCoeff::new(i as i64 + 1);
+    for (i, c) in test_poly.coeffs.iter_mut().enumerate().take(5) {
+        *c = KyberCoeff::new(i as i64 + 1);
     }
 
     println!("Original polynomial (first 5 coeffs):");

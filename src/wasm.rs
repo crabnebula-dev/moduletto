@@ -2,6 +2,11 @@
 //!
 //! This module provides JavaScript-friendly wrappers for modular arithmetic operations
 //! with the Kyber-512 modulus (3329).
+//!
+//! Inputs are reduced with [`ModN::ct_new`], which has no division: the demo
+//! is built with `opt-level = "z"`, where a `%` becomes a `rem_s` that the
+//! engine runs as a hardware divide. `mod_inverse` and `mod_pow` are
+//! variable-time by algorithm and say so.
 
 use crate::{ConstantTimeOps, KyberCoeff, ModN, NTTPoly, KYBER_N, KYBER_Q};
 use wasm_bindgen::prelude::*;
@@ -24,39 +29,41 @@ pub fn kyber_degree() -> usize {
 /// Modular addition: (a + b) mod 3329
 #[wasm_bindgen]
 pub fn mod_add(a: i32, b: i32) -> i32 {
-    let x = Mod3329::new(a as i64);
-    let y = Mod3329::new(b as i64);
+    let x = Mod3329::ct_new(a as i64);
+    let y = Mod3329::ct_new(b as i64);
     x.ct_add(y).value() as i32
 }
 
 /// Modular subtraction: (a - b) mod 3329
 #[wasm_bindgen]
 pub fn mod_sub(a: i32, b: i32) -> i32 {
-    let x = Mod3329::new(a as i64);
-    let y = Mod3329::new(b as i64);
+    let x = Mod3329::ct_new(a as i64);
+    let y = Mod3329::ct_new(b as i64);
     x.ct_sub(y).value() as i32
 }
 
 /// Modular multiplication: (a * b) mod 3329
 #[wasm_bindgen]
 pub fn mod_mul(a: i32, b: i32) -> i32 {
-    let x = Mod3329::new(a as i64);
-    let y = Mod3329::new(b as i64);
+    let x = Mod3329::ct_new(a as i64);
+    let y = Mod3329::ct_new(b as i64);
     x.ct_mul(y).value() as i32
 }
 
 /// Modular negation: (-a) mod 3329
 #[wasm_bindgen]
 pub fn mod_neg(a: i32) -> i32 {
-    let x = Mod3329::new(a as i64);
-    (-x).value() as i32
+    let x = Mod3329::ct_new(a as i64);
+    x.ct_neg().value() as i32
 }
 
 /// Modular inverse: a^(-1) mod 3329
 /// Returns -1 if inverse doesn't exist
+///
+/// Variable-time (extended Euclid): not for secret values.
 #[wasm_bindgen]
 pub fn mod_inverse(a: i32) -> i32 {
-    let x = Mod3329::new(a as i64);
+    let x = Mod3329::ct_new(a as i64);
     match x.inverse() {
         Some(inv) => inv.value() as i32,
         None => -1,
@@ -64,23 +71,26 @@ pub fn mod_inverse(a: i32) -> i32 {
 }
 
 /// Modular exponentiation: a^exp mod 3329
+///
+/// Variable-time (square-and-multiply on the exponent bits, `%` reductions):
+/// not for secret values.
 #[wasm_bindgen]
 pub fn mod_pow(a: i32, exp: u32) -> i32 {
-    let x = Mod3329::new(a as i64);
+    let x = Mod3329::ct_new(a as i64);
     x.pow(exp as u64).value() as i32
 }
 
 /// Check if a value is zero modulo 3329
 #[wasm_bindgen]
 pub fn is_zero(a: i32) -> bool {
-    let x = Mod3329::new(a as i64);
+    let x = Mod3329::ct_new(a as i64);
     x.is_zero()
 }
 
 /// Check if a value is one modulo 3329
 #[wasm_bindgen]
 pub fn is_one(a: i32) -> bool {
-    let x = Mod3329::new(a as i64);
+    let x = Mod3329::ct_new(a as i64);
     x.is_one()
 }
 
@@ -106,8 +116,8 @@ pub fn poly_add(a: &[i32], b: &[i32]) -> Result<Vec<i32>, JsValue> {
     let mut poly_b = NTTPoly::zero();
 
     for i in 0..KYBER_N {
-        poly_a.coeffs[i] = KyberCoeff::new(a[i] as i64);
-        poly_b.coeffs[i] = KyberCoeff::new(b[i] as i64);
+        poly_a.coeffs[i] = KyberCoeff::ct_new(a[i] as i64);
+        poly_b.coeffs[i] = KyberCoeff::ct_new(b[i] as i64);
     }
 
     let result = poly_a.add(&poly_b);
@@ -129,8 +139,8 @@ pub fn poly_sub(a: &[i32], b: &[i32]) -> Result<Vec<i32>, JsValue> {
     let mut poly_b = NTTPoly::zero();
 
     for i in 0..KYBER_N {
-        poly_a.coeffs[i] = KyberCoeff::new(a[i] as i64);
-        poly_b.coeffs[i] = KyberCoeff::new(b[i] as i64);
+        poly_a.coeffs[i] = KyberCoeff::ct_new(a[i] as i64);
+        poly_b.coeffs[i] = KyberCoeff::ct_new(b[i] as i64);
     }
 
     let result = poly_a.sub(&poly_b);
@@ -150,7 +160,7 @@ pub fn poly_ntt(coeffs: &[i32]) -> Result<Vec<i32>, JsValue> {
 
     let mut poly = NTTPoly::zero();
     for i in 0..KYBER_N {
-        poly.coeffs[i] = KyberCoeff::new(coeffs[i] as i64);
+        poly.coeffs[i] = KyberCoeff::ct_new(coeffs[i] as i64);
     }
 
     let ntt_poly = poly.ct_ntt();
@@ -170,7 +180,7 @@ pub fn poly_intt(coeffs: &[i32]) -> Result<Vec<i32>, JsValue> {
 
     let mut poly = NTTPoly::zero();
     for i in 0..KYBER_N {
-        poly.coeffs[i] = KyberCoeff::new(coeffs[i] as i64);
+        poly.coeffs[i] = KyberCoeff::ct_new(coeffs[i] as i64);
     }
 
     let intt_poly = poly.ct_intt();
@@ -192,8 +202,8 @@ pub fn poly_mul_ntt(a: &[i32], b: &[i32]) -> Result<Vec<i32>, JsValue> {
     let mut poly_b = NTTPoly::zero();
 
     for i in 0..KYBER_N {
-        poly_a.coeffs[i] = KyberCoeff::new(a[i] as i64);
-        poly_b.coeffs[i] = KyberCoeff::new(b[i] as i64);
+        poly_a.coeffs[i] = KyberCoeff::ct_new(a[i] as i64);
+        poly_b.coeffs[i] = KyberCoeff::ct_new(b[i] as i64);
     }
 
     let result = poly_a.ct_mul_ntt(&poly_b);

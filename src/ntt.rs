@@ -845,10 +845,13 @@ impl NTTPoly {
     }
 
     /// Create from slice (pads with zeros if needed)
+    ///
+    /// The values are reduced with [`ModN::ct_new`], without a division, so
+    /// this is safe for secret coefficients.
     pub fn from_slice(data: &[i64]) -> Self {
         let mut coeffs = [KyberCoeff::zero(); KYBER_N];
         for (i, &val) in data.iter().take(KYBER_N).enumerate() {
-            coeffs[i] = KyberCoeff::new(val);
+            coeffs[i] = KyberCoeff::ct_new(val);
         }
         Self { coeffs }
     }
@@ -1046,8 +1049,8 @@ mod tests {
         for i in 0..5 {
             assert_eq!(result.coeffs[i].value(), poly.coeffs[i].value());
         }
-        for i in 5..KYBER_N {
-            assert_eq!(result.coeffs[i].value(), 0);
+        for c in &result.coeffs[5..] {
+            assert_eq!(c.value(), 0);
         }
     }
 
@@ -1062,8 +1065,8 @@ mod tests {
         assert_eq!(product.coeffs[0].value(), 1);
         assert_eq!(product.coeffs[1].value(), 2);
         assert_eq!(product.coeffs[2].value(), 1);
-        for i in 3..KYBER_N {
-            assert_eq!(product.coeffs[i].value(), 0);
+        for c in &product.coeffs[3..] {
+            assert_eq!(c.value(), 0);
         }
     }
 
@@ -1096,8 +1099,8 @@ mod tests {
 
         // Should get -1 ≡ q-1 (mod q)
         assert_eq!(product.coeffs[0].value(), KYBER_Q - 1);
-        for i in 1..KYBER_N {
-            assert_eq!(product.coeffs[i].value(), 0);
+        for c in &product.coeffs[1..] {
+            assert_eq!(c.value(), 0);
         }
     }
 
@@ -1387,12 +1390,12 @@ mod backend_tests {
         const R: i64 = 65536 % KYBER_Q;
         let r_inv = KyberCoeff::new(R).inverse().unwrap();
 
-        for k in 1..128usize {
+        for (k, portable) in NTT_CONSTANTS.zetas.iter().enumerate().take(128).skip(1) {
             let mont = neon16::zeta(k);
             let standard = KyberCoeff::new(mont as i64) * r_inv;
             assert_eq!(
                 standard.value(),
-                NTT_CONSTANTS.zetas[k].value(),
+                portable.value(),
                 "butterfly twiddle {k} disagrees with the portable table"
             );
         }

@@ -283,15 +283,17 @@ let mut poly = [Mod3329::zero(); 256];
 ### Constant-time operations
 
 ```rust
-use moduletto::modn_ct::ModN as ModNCT;
+use moduletto::{ConstantTimeOps, ModN};
 
-type F = ModNCT<3329>;
-let a = F::new(42);
-let b = F::new(99);
+type F = ModN<3329>;
+// Secrets enter through `ct_new` (no division, no branch). `new` reduces
+// with `%`, a variable-time divide in size-optimised and debug builds.
+let a = F::ct_new(42);
+let b = F::ct_new(-99);
 
 // No data-dependent branches or memory access
 let sum = a.ct_add(b);
-let selected = F::ct_select(a, b, true); // constant-time conditional
+let selected = F::ct_select(a, b, 1); // constant-time conditional
 ```
 
 ## Running Benchmarks

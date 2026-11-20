@@ -89,8 +89,9 @@ jobs:
 
   fuzz:
     # Builds every fuzz target and runs the ML-DSA ones (signature and key
-    # decoding, sign-then-verify round trips) for 30 seconds each. macOS
-    # arm64 covers the AArch64-only paths (two-lane SHA3 sampling, DIT).
+    # decoding, sign-then-verify round trips) and the ML-KEM ones (ciphertext
+    # and key decoding, implicit rejection, round trips) for 30 seconds each.
+    # macOS arm64 covers the AArch64-only paths (two-lane SHA3 sampling, DIT).
     strategy:
       fail-fast: false
       matrix:
@@ -105,9 +106,10 @@ jobs:
         run: cargo install cargo-fuzz --locked
       - name: Build the fuzz targets
         run: cargo +nightly-2026-10-24 fuzz build
-      - name: Run the ML-DSA fuzz targets
+      - name: Run the ML-DSA and ML-KEM fuzz targets
         run: |
-          for target in fuzz_dsa_sig_decode fuzz_dsa_key_decode fuzz_dsa_roundtrip; do
+          for target in fuzz_dsa_sig_decode fuzz_dsa_key_decode fuzz_dsa_roundtrip \
+                        fuzz_kem_decaps fuzz_kem_encaps; do
             cargo +nightly-2026-10-24 fuzz run "$target" -- -max_total_time=30
           done
 

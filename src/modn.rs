@@ -83,6 +83,14 @@ impl<const N: i64> ModN<N> {
     /// use moduletto::ModN;
     /// let _ = ModN::<2147483648>::new(1);
     /// ```
+    ///
+    /// # Timing
+    ///
+    /// Variable-time: the reduction is a `%`, which compilers lower to a
+    /// hardware divide in unoptimised and size-optimised builds
+    /// (`opt-level = 0`, `"z"`), and a divide's latency depends on its
+    /// operands. Use this for constants and public values. A secret enters
+    /// through [`ModN::ct_new`].
     pub const fn new(value: i64) -> Self {
         let () = Self::VALID_MODULUS;
 
@@ -91,6 +99,58 @@ impl<const N: i64> ModN<N> {
             v += N;
         }
         Self { value: v }
+    }
+
+    /// Shift of the reciprocal used by [`ModN::ct_new`]: 63 + bit length of N.
+    const CT_NEW_SHIFT: u32 = {
+        let () = Self::VALID_MODULUS;
+        63 + (64 - (N as u64).leading_zeros())
+    };
+
+    /// `⌊2^SHIFT / N⌋`, at most 2^64. Evaluated at compile time, so the
+    /// division is never in the generated code.
+    const CT_NEW_MU: i128 = (1_i128 << Self::CT_NEW_SHIFT) / N as i128;
+
+    /// Creates a modular value from any `i64` without a division and without
+    /// a branch: the constructor for secret values.
+    ///
+    /// [`ModN::new`] reduces with `%`. At `opt-level = "z"` and in
+    /// unoptimised builds that is a hardware divide, whose timing depends on
+    /// the value (the KyberSlash pattern). This is a Barrett reduction with
+    /// a compile-time reciprocal instead: one 128-bit multiply, a shift, a
+    /// multiply-subtract and two masked corrections.
+    ///
+    /// With `b` the bit length of N, `μ = ⌊2^(63+b) / N⌋` and
+    /// `q = ⌊x·μ / 2^(63+b)⌋`, the estimate `q` is within one of `⌊x / N⌋`
+    /// for every `i64` x (below it for x ≥ 0, above it for x < 0), so
+    /// `x − q·N` lies in `[−N, 2N)`. `x·μ` is at most 2^127 in magnitude and
+    /// fits `i128`.
+    ///
+    /// On 32-bit targets the 128-bit multiply is a library call
+    /// (`__multi3`), which is straight-line code; on AArch64 run secret
+    /// computations under [`crate::dit::with_dit`] as for the other `ct_*`
+    /// operations.
+    ///
+    /// ```
+    /// use moduletto::ModN;
+    ///
+    /// assert_eq!(ModN::<3329>::ct_new(-1).value(), 3328);
+    /// assert_eq!(ModN::<7>::ct_new(i64::MIN).value(), ModN::<7>::new(i64::MIN).value());
+    /// ```
+    pub fn ct_new(value: i64) -> Self {
+        use subtle::{Choice, ConditionallySelectable};
+
+        let q = ((value as i128 * Self::CT_NEW_MU) >> Self::CT_NEW_SHIFT) as i64;
+        // q·N is within N of `value`, which can be just outside i64 at the
+        // extremes; the difference is small, so wrapping arithmetic is exact.
+        let r = value.wrapping_sub(q.wrapping_mul(N)); // [-N, 2N)
+
+        let negative = Choice::from((r >> 63) as u8 & 1);
+        let r = i64::conditional_select(&r, &(r + N), negative); // [0, 2N)
+        let reduced = r - N;
+        let in_range = Choice::from((reduced >> 63) as u8 & 1);
+        let r = i64::conditional_select(&reduced, &r, in_range); // [0, N)
+        Self { value: r }
     }
 
     /// Returns the canonical value in the range [0, N).
@@ -328,6 +388,53 @@ mod tests {
 
         let b = ModN::<7>::new(-4);
         assert_eq!(b.value(), 3);
+    }
+
+    /// `ct_new` against the division, for moduli across the allowed range
+    /// (including 1, powers of two and 2^31 - 1) and inputs at the edges of
+    /// `i64`, around multiples of N, and pseudo-random.
+    #[test]
+    fn ct_new_matches_division() {
+        fn check<const N: i64>() {
+            let mut inputs = vec![0, 1, -1, i64::MAX, i64::MAX - 1, i64::MIN, i64::MIN + 1];
+            for m in [1, 2, 3, 1 << 20, (1 << 32) + 1, i64::MAX / N, i64::MIN / N] {
+                for d in -2..=2 {
+                    inputs.push(m.wrapping_mul(N).wrapping_add(d));
+                    inputs.push(m.wrapping_mul(N).wrapping_neg().wrapping_add(d));
+                }
+            }
+            for sh in 0..63 {
+                for d in -1..=1 {
+                    inputs.push((1_i64 << sh).wrapping_add(d));
+                    inputs.push((-1_i64 << sh).wrapping_add(d));
+                }
+            }
+            let mut x = 0x9e37_79b9_7f4a_7c15_u64 ^ N as u64;
+            for _ in 0..50_000 {
+                x = x
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                inputs.push(x as i64);
+                inputs.push((x >> 40) as i64 - (1 << 23));
+            }
+            for v in inputs {
+                assert_eq!(
+                    ModN::<N>::ct_new(v).value(),
+                    ModN::<N>::new(v).value(),
+                    "N = {N}, v = {v}"
+                );
+            }
+        }
+        check::<1>();
+        check::<2>();
+        check::<3>();
+        check::<7>();
+        check::<256>();
+        check::<3329>();
+        check::<8380417>();
+        check::<1073741824>();
+        check::<1073741825>();
+        check::<2147483647>();
     }
 
     #[test]
