@@ -9,7 +9,7 @@ open.
 |---|---|---|---|---|
 | 2026-10-10 | Claude Mythos 5.1 (Anthropic) | `7440768` | 1 critical, 3 medium, 4 low, 5 informational | All remediated in the commit that adds this file |
 | 2026-10-10 (follow-up) | Claude Mythos 5.1 (Anthropic) | `aeaedd9` | Timing verification: 1 hardware finding (operand-dependent multiply latency on Apple M5 without DIT) | Remediated: DIT, stack scrub, dudect and Valgrind checks in CI, proofs in CI |
-| 2026-11-20 | Claude Mythos 5.2 (Anthropic) | `46754f2`, findings re-checked at `6c1ae92` | 1 medium, 3 low, 4 informational | Medium already fixed on `main` by `19a4d3a`; the three low findings remediated in the commit that adds this record; informational items open. `src/dsa.rs` and `src/keccak.rs` not reviewed |
+| 2026-11-20 | Claude Mythos 5.2 (Anthropic) | `46754f2`, findings re-checked at `6c1ae92` | 1 medium, 3 low, 4 informational | Medium already fixed on `main` by `19a4d3a`; the three low findings remediated in `0970a00`; informational items open. Follow-up the same day: `src/dsa.rs`, `src/keccak.rs` and the `src/kem.rs` changes reviewed at `6c1ae92`, no finding above informational |
 
 ---
 
@@ -335,11 +335,9 @@ This was noticed only after the findings were written. Consequences:
 
 - Every finding was re-checked against `6c1ae92`, and the status column
   below is for that commit. The remediation is based on it.
-- **`src/dsa.rs` and `src/keccak.rs` were not reviewed**, and the changes to
-  `src/kem.rs` between the two commits were not read line by line. For
-  `6c1ae92` this review covers only what the re-checks below exercise: the
-  stack scan of the six ML-KEM entry points, the divide search, the test
-  suites and the two new fuzz targets.
+- `src/dsa.rs`, `src/keccak.rs` and the changes to `src/kem.rs` between the
+  two commits were not part of the main review. They were reviewed
+  afterwards; see the follow-up at the end of this section.
 
 Method at `46754f2`: line-by-line reading of `src/kem.rs`, `src/dit.rs`,
 `src/modn.rs`, `src/modn_ct.rs`, `src/ntt.rs`, `src/wasm.rs` and
@@ -484,14 +482,94 @@ each in the existing `fuzz` job:
 | `cargo audit` (root and `fuzz/`) | 0 vulnerabilities; 3 warnings in the root lock file (finding 5) |
 | Stack-scan harness against `6c1ae92` | no secret found |
 
+### Follow-up — ML-DSA-65, the shared Keccak module and the `kem.rs` changes
+
+Requested by the operator after the remediation, against `6c1ae92`.
+
+**Scope and method.** `src/dsa.rs` (1 815 lines) and `src/keccak.rs` read
+line by line against FIPS 204 and the pq-crystals reference; `src/kem.rs`
+at `6c1ae92` compared with the reviewed version after normalising its
+formatting; a hand derivation of the `i32` coefficient bounds; a stack scan
+of key generation, signing and verification; a cross-check of the sponge
+against the `sha3` crate; the divide search at `opt-level = "z"`; dudect on
+Apple M5. `tests/dsa_kat.rs`, `tests/review_dsa.rs`, the three ML-DSA fuzz
+targets and the ML-DSA parts of the timing harnesses were not read in full;
+they were run, here or in CI.
+
+**Result: no finding above informational.**
+
+What was checked and held:
+
+- FIPS 204 conformance on reading: the seed expansion H(ξ ‖ k ‖ ℓ), ExpandA
+  with the (s, r) byte order, RejBoundedPoly, ExpandMask with the κ counter
+  modulo 2¹⁶, SampleInBall, ρ″ = H(K ‖ rnd ‖ μ), the four rejection
+  conditions of Algorithm 7, MakeHint as a comparison of high bits, and
+  UseHint. Verification rejects wrong lengths, ‖z‖∞ ≥ γ₁ − β and the three
+  malformed hint encodings of Algorithm 21, so an accepted signature has one
+  encoding.
+- Secret-dependent control flow: the reductions, `Decompose`, `Power2Round`
+  and the norm checks are shifts, multiplies and masks; the rejection checks
+  run over every coefficient and fold into one bit; the SampleInBall swap is
+  a masked pass. The three branches on secret-derived values are the ones
+  the module documentation declares public.
+- Bounds: every `montgomery_reduce` input is below 2³¹·q. The inverse NTT
+  lets sums grow to 256·(q − 1) = 2 145 386 496, which fits `i32` with 0.1 %
+  to spare; all three call sites reduce their input below q first, as the
+  function requires (observation 3 below).
+- Sponge: `external_mu` agrees with the `sha3` crate for 5 992 combinations
+  of context and message length, chosen to put each part boundary on, before
+  and after a rate boundary. `tr` inside `sk` equals SHAKE256(pk, 64) and
+  the key seeds equal H(ξ ‖ 6 ‖ 5) computed independently.
+- Stack: after `keygen_internal_into`, `keygen_internal`, `sign` and
+  `sign_mu` (deterministic and hedged), 261 to 350 non-zero bytes remain
+  below the caller and none of ξ, ρ′, K, packed or unpacked s₁, packed t₀,
+  the RejBoundedPoly stream, μ, ρ″, `rnd` or the ExpandMask stream.
+- Timing: `dsa_sign_key_a_vs_key_b` under DIT on Apple M5, 20 000 samples:
+  max t = −2.4. At `opt-level = "z"` the only divides in `src/dsa.rs` are in
+  `expand_a`, on public indices.
+- `src/kem.rs`: apart from formatting and the move of Keccak to its own
+  module, the changes are the three `#[inline(never)]` wrappers, a rewrite
+  of the chunking in `check_ek` (fuzzed against a reference by
+  `fuzz_kem_encaps`) and two `saturating_sub` calls.
+
+Informational observations:
+
+1. Verification does not scrub the stack, as documented: 14 252 non-zero
+   bytes remain below the caller. Neither μ nor the message was among them
+   in this build.
+2. `sign_internal`, `verify_internal`, `sign_mu` and `verify_mu` are public.
+   FIPS 204 intends the internal interfaces for testing and for the external
+   μ case; the documentation says what they are, and nothing stops an
+   application from calling them without the domain separation of
+   Algorithm 2.
+3. `invntt_tomont` has no slack: an input coefficient of q or more in
+   absolute value can overflow `i32` (a panic with overflow checks, a wrong
+   result without). It is private and its callers comply; a `debug_assert`
+   on the input bound would make the contract checkable.
+4. A private key with out-of-range s₁ or s₂ is accepted, as FIPS 204 allows.
+5. The Rocq proofs do not cover this arithmetic, as documented.
+
+### Note on CI (finding 7)
+
+The `test` job installs the `stable` toolchain unpinned and denies clippy
+warnings. Between the last run on `main` and this pull request, stable moved
+to Rust 1.100, whose clippy rejects five index loops that were already in
+`src/ntt.rs` tests and `examples/wasm_usage.rs`. `main` would have failed its
+next run, and with the checks now required nothing could have merged. The
+five loops are rewritten in the commit that adds this follow-up; the job was
+re-run locally under 1.100.0 (formatting, clippy in three feature sets, all
+test configurations, the no_std and example builds). Pinning the toolchain
+and letting Dependabot propose updates would keep this from recurring; that
+is left open under finding 7.
+
 ### Residual risks
 
-- ML-DSA-65 and the shared Keccak module have had no review recorded in
-  this file.
-- dudect and the Valgrind check were not run locally on the remediation;
-  both run in CI on the pull request, which the new branch rules require to
-  pass.
-- Findings 5 to 8 are open.
+- The ML-DSA review is one reading with the checks above. The test files and
+  fuzz targets for ML-DSA were run, not audited.
+- The Valgrind check was not run locally (no Valgrind on Apple Silicon);
+  it runs in CI on the pull request, which the new branch rules require to
+  pass. dudect was run locally for ML-DSA signing only.
+- Findings 5 to 8 and the observations above are open.
 - An AI performed this work; a human cryptographic review is still advised
   before production use.
 
@@ -534,18 +612,23 @@ artefacts, single commit on a branch).
 │  Reviewed commit  46754f2fccb0a501be278fb2fab63b670101a33d  │
 │                   (five commits behind main; see the record)│
 │  Re-checked at    6c1ae92f2bf14eb56b5d48d1e7fc6f7ca5843683  │
-│  Not reviewed     src/dsa.rs, src/keccak.rs                 │
 │  Audit started    2026-11-20T19:55:36Z                      │
 │  Audit sealed     2026-11-20T20:21:35Z                      │
 │  Elapsed          26 minutes, review and remediation        │
 │  Findings         1 medium (fixed earlier by 19a4d3a),      │
 │                   3 low, 4 informational                    │
-│  Remediation      the 3 low findings; the commit that adds  │
-│                   this record                               │
+│  Remediation      the 3 low findings; commit 0970a00        │
 │  Open             informational findings 5 to 8             │
+│                                                             │
+│  Follow-up        src/dsa.rs, src/keccak.rs and the kem.rs  │
+│                   changes, at 6c1ae92: no finding above     │
+│                   informational                             │
+│  Follow-up sealed 2026-11-20T20:47:24Z                      │
+│  Elapsed, total   52 minutes                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 Operator: Daniel Thompson-Yvetot (CrabNebula Ltd), who asked for the review,
-for the medium and low findings to be fixed, and for this record. The start
-time is that of the review session's working directory.
+for the medium and low findings to be fixed, for the follow-up review, and
+for this record. The start time is that of the review session's working
+directory.
